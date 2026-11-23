@@ -470,3 +470,25 @@ ruta copiada del Explorador y se reproducen en el `<video>`; el Player
 tiene Anterior/Pausa/Siguiente; la sala y la contraseña de admin se
 gestionan desde la UI. El token de sesión aparece en la URL del vídeo
 local (solo en red local, mismo token que ya viaja en el header).
+
+## ADR-021: `rust-port` pasa a ser `main`; Node v1.0.0 queda en `node-v1`
+Status: accepted (2026-11-23)
+Context: el usuario probó las mejoras de ADR-020, le gustaron mucho y
+pidió que la rama Rust fuera la principal y la de Node la secundaria.
+`main` (31abfed, Node v1.0.0) y `rust-port` (dd5e84a) no comparten
+historia: las dos son reescrituras huérfanas de la limpieza de
+privacidad del 2026-11-23, así que un merge arrastraría dos historias
+sin relación. El cambio se hace por sustitución, no por merge.
+Decision: primero se crea la rama `node-v1` desde `main` (31abfed) y se
+sube, para que Node v1.0.0 no se pierda. Después `main` se sustituye por
+el contenido de `rust-port` (`git push --force origin rust-port:main`)
+y se borra la rama remota `rust-port` (su contenido ya es `main`).
+Los README se actualizan antes del cambio: la sección "Ramas del
+proyecto" pasa a decir `main` = Rust (principal) y `node-v1` = Node
+v1.0.0 (secundaria); `rust/README.md` deja de decir `rust-port`; el
+workflow Rust pasa a dispararse solo en `main` (más tags `v*` y PR).
+Consequences: `main` es ahora el servidor Rust con ADR-020; quien
+tuviera clonado el `main` anterior lo conserva en local, y en GitHub
+sigue disponible como `node-v1`. La CI de Rust corre en cada push a
+`main`. No se hace release v2.0.0 en este cambio (pendiente de
+decisión del usuario).

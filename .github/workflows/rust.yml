@@ -13,7 +13,7 @@ name: Rust
 
 on:
   push:
-    branches: [main, rust-port]
+    branches: [main]
     tags: ['v*']
   pull_request:
 

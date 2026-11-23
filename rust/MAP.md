@@ -138,11 +138,11 @@ Notas:
   `karaokemuse` 8.2 MB, verificado a mano: `/api/songs/random` 6
   llamadas (3 distintas cada una), login admin, `GET /` 200, y
   ningún proceso Node corriendo. El binario NO necesita Node ni el
-  código Node presente. Total tests: 44 (crypto 5, db 17, auth 7,
-  routes 15, app 0), fmt y clippy limpios en los 5 crates.
-  Queda pendiente: merge de `rust-port` a main + release v2.0.0
-  con binarios Linux/Windows (lo hace el agente principal con
-  Cosio33, no este port).
+  código Node presente. Total tests: 50 (crypto 5, db 17, auth 7,
+  routes 21, app 0), fmt y clippy limpios en los 5 crates.
+  2026-11-23 (ADR-021): `rust-port` pasó a ser `main` (por sustitución,
+  no por merge); Node v1.0.0 quedó en la rama `node-v1`. El release
+  v2.0.0 sigue pendiente de decisión de Cosio33.
 - Casos: 295 grabados con `app record --http` (43 inputs + 252 traps);
   replay contra el original **295/295**. Ruido: solo `songs-random`
   (body) — el cuerpo es una sola línea JSON y el orden aleatorio se

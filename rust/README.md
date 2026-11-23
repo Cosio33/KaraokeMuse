@@ -1,4 +1,4 @@
-# 🎤 KaraokeMuse en Rust — rama `rust-port`
+# 🎤 KaraokeMuse en Rust — rama `main`
 
 Port del servidor de KaraokeMuse (v1, Node 24) a **Rust puro**, con
 paridad total: mismas rutas, mismos status codes, mismas variables
@@ -6,10 +6,10 @@ de entorno, mismo archivo SQLite y mismo formato JSON. El frontend
 (`public/`) no se porta: sigue en JavaScript y se sirve como
 archivos estáticos.
 
-> **Esta rama es el port, por separado.** `main` sigue con el
-> servidor Node v1.0.0 y el servidor Node (`server/`) queda en el
-> repo como referencia hasta que se decida el cambio. El merge
-> a `main` y el release **v2.0.0** se hacen solo con su decisión.
+> **Esta es la rama principal desde 2026-11-23 (ADR-021).** El
+> servidor Rust es la versión principal; el servidor Node v1.0.0 queda
+> en la rama secundaria `node-v1`, y `server/` en este repo queda como
+> referencia.
 
 Repo: https://github.com/Cosio33/KaraokeMuse
 
@@ -199,7 +199,7 @@ Sin `DATA_DIR` el binario abriría `<ROOT>/data` (la BD real); sin
 
 ## CI
 
-`.github/workflows/rust.yml`: en cada push a `main` y `rust-port`
+`.github/workflows/rust.yml`: en cada push a `main`
 (además de PR y tags `v*`) corre `fmt --check`, `clippy -D
 warnings`, `cargo test` y `build --release` en `ubuntu-latest` y
 `windows-latest`, y sube el binario como artefacto. Sin replay en

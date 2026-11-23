@@ -19,6 +19,49 @@ admin lo genera después y lo agrega manualmente.
 > karaoke-eternal-analysis/INFORME.md` en la VM de Muse para el
 > análisis completo.
 
+## Ramas del proyecto
+
+KaraokeMuse tiene dos versiones del servidor. Las dos sirven el
+mismo frontend y usan la misma base SQLite (`./data/
+karaokemuse.sqlite`, sin migración entre versiones).
+
+### `main` — Rust (versión principal)
+
+El mismo servidor, reescrito en Rust puro, con paridad total
+(mismas rutas, status, variables de entorno y formato JSON).
+**No necesita Node para correr.** Es la rama por defecto de este repo.
+
+Documentación completa, instalación de Rust y verificación:
+**[rust/README.md](rust/README.md)**.
+
+```bash
+cargo build --release --manifest-path rust/app/Cargo.toml
+./rust/app/target/release/karaokemuse
+```
+
+Requiere **Rust estable** (cargo + rustfmt + clippy). Los
+binarios ya compilados para Linux y Windows se publican como
+artefactos de la CI en esta rama.
+
+### `node-v1` — Node.js (v1.0.0, versión secundaria)
+
+La versión original, en Node 24 sin dependencias. Queda como rama
+secundaria por si hace falta volver a ella.
+
+```bat
+npm start
+```
+
+O directamente:
+
+```bat
+node server/index.js
+```
+
+Requiere **Node.js 24 o superior**. Todo lo demás de este README
+(Requisitos, Arranque, Variables de entorno, uso, roles, QR,
+Android) describe esta versión.
+
 ## Requisitos
 
 - **Node.js 24 o superior** (usa `node:sqlite`, incluido en Node 24).
