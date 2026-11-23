@@ -1,0 +1,14 @@
+[request]
+method = "PATCH"
+path = "/api/songs/%C4%B0stanbul"
+body = '{"title":"No debería cambiar"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 403
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

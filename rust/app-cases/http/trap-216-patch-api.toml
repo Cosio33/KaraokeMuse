@@ -1,0 +1,14 @@
+[request]
+method = "PATCH"
+path = "/api/songs/song_seed001"
+body = '{"n":9007199254740993,"f":1e21,"t":0.1,"neg":-7}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 403
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

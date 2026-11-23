@@ -1,0 +1,10 @@
+[request]
+method = "GET"
+path = "/icons/icon-192.png"
+
+[response]
+status = 200
+binary = true
+
+[response.headers]
+content-type = "image/png"

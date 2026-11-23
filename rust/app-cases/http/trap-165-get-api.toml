@@ -1,0 +1,12 @@
+[request]
+method = "GET"
+path = "/api/metadata?url=%E6%97%A5%E6%9C%AC%E8%AA%9E"
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+[response]
+status = 200
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

@@ -1,0 +1,14 @@
+[request]
+method = "POST"
+path = "/api/%C4%B0stanbul"
+body = '{"songId":"song_seed003"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

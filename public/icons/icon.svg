@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Icono fuente de KaraokeMuse (micrófono dorado sobre fondo oscuro). Sin imágenes con copyright. -->
+  <rect width="512" height="512" fill="#171033"/>
+  <circle cx="256" cy="256" r="174" fill="#6c4fd8"/>
+  <circle cx="256" cy="256" r="143" fill="#221a33"/>
+  <rect x="205" y="72" width="102" height="174" rx="51" fill="#ffd23f"/>
+  <line x1="210" y1="102" x2="302" y2="102" stroke="#171033" stroke-width="9"/>
+  <line x1="210" y1="138" x2="302" y2="138" stroke="#171033" stroke-width="9"/>
+  <line x1="210" y1="174" x2="302" y2="174" stroke="#171033" stroke-width="9"/>
+  <line x1="210" y1="210" x2="302" y2="210" stroke="#171033" stroke-width="9"/>
+  <path d="M164 194 A92 92 0 0 0 348 368" fill="none" stroke="#ffd23f" stroke-width="15"/>
+  <line x1="256" y1="348" x2="256" y2="410" stroke="#ffd23f" stroke-width="15"/>
+  <line x1="195" y1="420" x2="317" y2="420" stroke="#ffd23f" stroke-width="18" stroke-linecap="round"/>
+</svg>

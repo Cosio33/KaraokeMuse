@@ -1,0 +1,36 @@
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#14101f;color:#f2eefc;line-height:1.5}
+header{padding:1.2rem 1rem .5rem;text-align:center}
+header h1{margin:0;font-size:1.8rem}
+.sub{color:#c9bfe0;margin:.3rem 0}
+main{max-width:900px;margin:0 auto;padding:0 1rem 2rem}
+.card{background:#221a33;border:1px solid #3d2f5c;border-radius:14px;padding:1rem;margin-top:1rem}
+.hidden{display:none!important}
+label{display:block;margin:.5rem 0;font-size:.95rem}
+input,select,textarea{width:100%;padding:.6rem;border-radius:8px;border:1px solid #4a3a70;background:#171226;color:#fff;margin-top:.25rem}
+.check input{width:auto}
+.btn{background:#6c4fd8;color:#fff;border:0;border-radius:10px;padding:.65rem 1.1rem;font-size:1rem;cursor:pointer;margin-top:.5rem}
+.btn.primary{background:#e5488f}
+.btn.small{padding:.35rem .7rem;font-size:.9rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{min-height:1.2em;color:#ffd166;font-size:.95rem}
+.small{color:#c9bfe0;font-size:.88rem}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:1rem}
+.tab{background:#221a33;color:#f2eefc;border:1px solid #3d2f5c;border-radius:10px;padding:.6rem .3rem;cursor:pointer;font-size:.95rem}
+.tab.active{background:#6c4fd8}
+.badge{background:#e5488f;border-radius:999px;padding:0 .45rem;font-size:.85rem}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin:.5rem 0}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 .8rem}
+.songlist{display:grid;gap:.6rem;margin-top:.5rem}
+.song{display:flex;gap:.7rem;align-items:center;background:#171226;border:1px solid #3d2f5c;border-radius:10px;padding:.6rem}
+.song img{width:64px;height:48px;object-fit:cover;border-radius:6px;background:#000}
+.song .info{flex:1;min-width:0}
+.song .info b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song .meta{font-size:.85rem;color:#c9bfe0}
+.song .actions{display:flex;flex-direction:column;gap:.3rem}
+.qr{background:#fff;border-radius:12px;padding:1rem;display:inline-block}
+.qr svg{display:block;max-width:260px;height:auto}
+.playerbox iframe,.playerbox video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+.lyrics pre{white-space:pre-wrap;font-family:inherit}
+footer{text-align:center;padding:1rem;color:#c9bfe0}
+@media(max-width:560px){.formgrid,.filters{grid-template-columns:1fr}.tabs{grid-template-columns:repeat(2,1fr)}}

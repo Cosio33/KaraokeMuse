@@ -1,0 +1,14 @@
+[request]
+method = "POST"
+path = "/api/stra%C3%9Fe"
+body = '{"title":"Canción Nueva SP","artist":"Artista Nuevo","platform":"spotify","url":"https://open.spotify.com/track/0000000000000000000000","genre":"pop","language":"español","difficulty":"media"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

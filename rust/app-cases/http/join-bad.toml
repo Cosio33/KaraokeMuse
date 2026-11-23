@@ -1,0 +1,13 @@
+[request]
+method = "POST"
+path = "/api/join"
+body = '{"code":"XXXXXX","name":"Tardío"}'
+
+[request.headers]
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

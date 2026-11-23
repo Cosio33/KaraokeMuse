@@ -1,0 +1,13 @@
+[request]
+method = "POST"
+path = "/api/auth/%C4%B0stanbul"
+body = '{"username":"admin","password":"clave-incorrecta"}'
+
+[request.headers]
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

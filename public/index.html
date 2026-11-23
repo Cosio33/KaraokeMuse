@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="KaraokeMuse: karaoke compartido con enlaces de YouTube y Spotify, vídeos locales enlazados, cola y QR para invitados.">
+<meta name="theme-color" content="#171033">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KaraokeMuse">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<title>KaraokeMuse 🎤</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/vendor/qrcode.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>🎤 KaraokeMuse</h1>
+  <p class="sub">Karaoke compartido: enlaces de YouTube y Spotify, vídeos locales enlazados, cola y QR para invitados.</p>
+  <button id="installBtn" class="btn small hidden">📲 Instalar app</button>
+  <p id="installMsg" class="small"></p>
+  <div id="sessionBar" class="hidden">
+    <span id="sessionInfo"></span>
+    <button id="logoutBtn" class="btn small">Salir</button>
+  </div>
+</header>
+
+<main>
+  <!-- Acceso -->
+  <section id="authView" class="card">
+    <h2>Entrar a la sala</h2>
+    <p>Escanea el QR del anfitrión o escribe el código de la sala. Los invitados solo ven y agregan canciones; solo el admin edita.</p>
+    <label>Nombre (para la cola)
+      <input id="joinName" type="text" placeholder="Ej. Invitado" maxlength="30">
+    </label>
+    <label>Código de sala
+      <input id="joinCode" type="text" placeholder="Ej. K7X2Q9" maxlength="10" autocomplete="off">
+    </label>
+    <label>Contraseña de sala (solo si el admin puso una)
+      <input id="joinPassword" type="password" placeholder="Opcional" autocomplete="off">
+    </label>
+    <button id="joinBtn" class="btn primary">Entrar como invitado</button>
+    <p id="joinMsg" class="msg"></p>
+    <hr>
+    <h3>¿Eres el administrador?</h3>
+    <label>Usuario <input id="adminUser" type="text" value="admin" autocomplete="username"></label>
+    <label>Contraseña <input id="adminPass" type="password" autocomplete="current-password"></label>
+    <button id="loginBtn" class="btn">Entrar como admin</button>
+    <p id="loginMsg" class="msg"></p>
+  </section>
+
+  <!-- App -->
+  <section id="appView" class="hidden">
+    <section class="card" id="qrCard">
+      <h2>📱 Únete con el QR</h2>
+      <p>Escanea el código con el móvil para entrar a la sala <strong id="roomName"></strong> (código <strong id="roomCode"></strong>).</p>
+      <div id="qrBox" class="qr"></div>
+      <p class="small">El QR solo lleva la dirección y el código de sala. Si la sala tiene contraseña, se escribe a mano tras escanear — nunca viaja en el QR.</p>
+    </section>
+
+    <nav class="tabs" id="tabs">
+      <button data-tab="library" class="tab active">📚 Biblioteca</button>
+      <button data-tab="queue" class="tab">🎶 Cola <span id="queueCount" class="badge">0</span></button>
+      <button data-tab="player" class="tab">▶️ Player</button>
+      <button data-tab="sing" class="tab">🎲 A cantar</button>
+      <button data-tab="requests" class="tab">✨ Pedir vídeo</button>
+      <button data-tab="admin" class="tab" id="adminTab">⚙️ Admin</button>
+    </nav>
+
+    <section id="tab-library" class="tabpane card">
+      <h2>Mi repertorio</h2>
+      <div class="filters">
+        <input id="fSearch" type="search" placeholder="Buscar título, artista o género…">
+        <select id="fPlatform"><option value="">Todas las plataformas</option><option value="youtube">YouTube</option><option value="spotify">Spotify</option><option value="local">Vídeo local</option></select>
+        <select id="fRating"><option value="0">Cualquier calificación</option><option value="1">★ 1 o más</option><option value="2">★ 2 o más</option><option value="3">★ 3 o más</option><option value="4">★ 4 o más</option><option value="5">★ Solo 5</option></select>
+        <button id="fClear" class="btn small">Limpiar</button>
+      </div>
+      <div id="songList" class="songlist"></div>
+
+      <h3>Agregar canción (enlace YouTube o Spotify)</h3>
+      <p class="small">Los invitados solo pueden agregar enlaces. Los vídeos locales solo los registra el admin en la pestaña Admin.</p>
+      <div class="formgrid">
+        <label>Enlace <input id="sUrl" type="url" placeholder="https://www.youtube.com/watch?v=… o https://open.spotify.com/track/…"></label>
+        <button id="detectBtn" class="btn">🔍 Detectar título y artista</button>
+        <p id="detectMsg" class="msg"></p>
+        <label>Título * <input id="sTitle" type="text"></label>
+        <label>Artista <input id="sArtist" type="text"></label>
+        <label>Género <input id="sGenre" type="text" placeholder="Pop, rock, banda…"></label>
+        <label>Idioma <input id="sLang" type="text" placeholder="Español"></label>
+        <label>Dificultad
+          <select id="sDiff"><option value="facil">Fácil</option><option value="media" selected>Media</option><option value="dificil">Difícil</option></select>
+        </label>
+        <label>Estado
+          <select id="sStatus"><option value="want">Quiero aprenderla</option><option value="practicing">En práctica</option><option value="mastered">La domino</option></select>
+        </label>
+        <label>Calificación (0–5) <input id="sRating" type="number" min="0" max="5" value="0"></label>
+        <label>Notas <input id="sNotes" type="text" placeholder="Notas para cantarla…"></label>
+        <label class="check"><input id="sFav" type="checkbox"> Favorita ⭐</label>
+      </div>
+      <button id="addSongBtn" class="btn primary">Agregar canción</button>
+      <p id="addMsg" class="msg"></p>
+    </section>
+
+    <section id="tab-queue" class="tabpane card hidden">
+      <h2>Playlist activa</h2>
+      <p class="small">Los enlaces de YouTube y Spotify sí entran en la cola. El admin puede quitar cualquiera; cada invitado solo las suyas.</p>
+      <button id="nextBtn" class="btn primary">⏭ Siguiente canción (admin)</button>
+      <div id="queueList"></div>
+    </section>
+
+    <section id="tab-player" class="tabpane card hidden">
+      <h2>Player</h2>
+      <p class="small">Pantalla completa en el dispositivo del anfitrión. YouTube y Spotify usan su reproductor oficial embebido; los vídeos locales se reproducen desde el disco del servidor.</p>
+      <div id="playerBox" class="playerbox"><p>Aún no hay canción sonando. Pide la siguiente desde la Cola.</p></div>
+      <div id="lyricsBox" class="lyrics hidden"><h3>Letra</h3><pre id="lyricsText"></pre></div>
+    </section>
+
+    <section id="tab-sing" class="tabpane card hidden">
+      <h2>🎲 A cantar</h2>
+      <p>3 canciones al azar de tu repertorio para esta ronda.</p>
+      <button id="shuffleBtn" class="btn primary">🎲 Cambiar canciones</button>
+      <div id="singList" class="songlist"></div>
+    </section>
+
+    <section id="tab-requests" class="tabpane card hidden">
+      <h2>✨ Pide un vídeo karaoke</h2>
+      <p class="small">El generador de vídeos NO está en esta app: se genera en la VM de Muse y el admin lo agrega manualmente. Aquí solo dejas la solicitud.</p>
+      <div class="formgrid">
+        <label>Enlace del vídeo original * <input id="rUrl" type="url" placeholder="https://www.youtube.com/watch?v=…"></label>
+        <label>Nombre de la canción * <input id="rTitle" type="text"></label>
+        <label>Artista <input id="rArtist" type="text"></label>
+        <label>Dificultad
+          <select id="rDiff"><option value="facil">Fácil</option><option value="media" selected>Media</option><option value="dificil">Difícil</option></select>
+        </label>
+        <label>Idioma <input id="rLang" type="text" placeholder="Español"></label>
+        <label>Notas <input id="rNotes" type="text" placeholder="Versión, tono, algo que deba saber el admin…"></label>
+      </div>
+      <button id="reqBtn" class="btn primary">Enviar solicitud</button>
+      <p id="reqMsg" class="msg"></p>
+      <h3>Mis solicitudes</h3>
+      <div id="reqList"></div>
+    </section>
+
+    <section id="tab-admin" class="tabpane card hidden">
+      <h2>⚙️ Admin: vídeos locales y solicitudes</h2>
+      <p class="small">Solo el admin ve esta pestaña. Los vídeos se <strong>enlazan</strong> desde archivos locales del servidor (ruta en disco); nunca se suben ni se copian.</p>
+      <h3>Registrar vídeo local</h3>
+      <div class="formgrid">
+        <label>Ruta local en el servidor * <input id="lPath" type="text" placeholder="Ej. C:\Karaoke\videos\mi-cancion.mp4 o /home/usuario/karaoke/mi-cancion.mp4"></label>
+        <label>Título * <input id="lTitle" type="text"></label>
+        <label>Artista <input id="lArtist" type="text"></label>
+        <label>Género <input id="lGenre" type="text"></label>
+        <label>Idioma <input id="lLang" type="text"></label>
+        <label>Dificultad
+          <select id="lDiff"><option value="facil">Fácil</option><option value="media" selected>Media</option><option value="dificil">Difícil</option></select>
+        </label>
+        <label>Letra (.srt, opcional — se muestra en el Player, sin sincronía en v1)
+          <textarea id="lLyrics" rows="4" placeholder="Pega aquí el contenido del .srt…"></textarea>
+        </label>
+      </div>
+      <button id="addLocalBtn" class="btn primary">Registrar vídeo local</button>
+      <p id="localMsg" class="msg"></p>
+      <h3>Solicitudes de generación</h3>
+      <div id="adminReqList"></div>
+    </section>
+  </section>
+</main>
+<footer><p class="small">KaraokeMuse v1 — servidor local. Respeta los derechos de autor: comparte solo vídeos tuyos o con licencia, y usa YouTube/Spotify solo como enlaces.</p></footer>
+<script src="/app.js"></script>
+</body>
+</html>

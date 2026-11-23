@@ -1,0 +1,43 @@
+{"name": "health", "method": "GET", "path": "/api/health"}
+{"name": "static-index", "method": "GET", "path": "/"}
+{"name": "static-app-js", "method": "GET", "path": "/app.js"}
+{"name": "static-style", "method": "GET", "path": "/style.css"}
+{"name": "static-sw", "method": "GET", "path": "/sw.js"}
+{"name": "static-manifest", "method": "GET", "path": "/manifest.webmanifest"}
+{"name": "static-icon-192", "method": "GET", "path": "/icons/icon-192.png"}
+{"name": "static-qrcode", "method": "GET", "path": "/vendor/qrcode.min.js"}
+{"name": "me-noauth", "method": "GET", "path": "/api/me"}
+{"name": "login-bad", "method": "POST", "path": "/api/auth/login", "headers": {"Content-Type": "application/json"}, "body": "{\"username\":\"admin\",\"password\":\"clave-incorrecta\"}"}
+{"name": "login-good", "method": "POST", "path": "/api/auth/login", "headers": {"Content-Type": "application/json"}, "body": "{\"username\":\"admin\",\"password\":\"AdminTest123!\"}"}
+{"name": "me-admin", "method": "GET", "path": "/api/me", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}
+{"name": "room-admin", "method": "GET", "path": "/api/room", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}
+{"name": "join-bad", "method": "POST", "path": "/api/join", "headers": {"Content-Type": "application/json"}, "body": "{\"code\":\"XXXXXX\",\"name\":\"Tardío\"}"}
+{"name": "join-good", "method": "POST", "path": "/api/join", "headers": {"Content-Type": "application/json"}, "body": "{\"code\":\"KMTEST\",\"name\":\"InvitadoNuevo\"}"}
+{"name": "me-guest", "method": "GET", "path": "/api/me", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-list", "method": "GET", "path": "/api/songs", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-minrating", "method": "GET", "path": "/api/songs?minRating=5", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-random", "method": "GET", "path": "/api/songs/random", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "metadata-unsupported", "method": "GET", "path": "/api/metadata?url=https%3A%2F%2Fexample.com%2Fvideo", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-post-youtube-guest", "method": "POST", "path": "/api/songs", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"title\":\"Vídeo Nuevo YT\",\"artist\":\"Artista Nuevo\",\"platform\":\"youtube\",\"url\":\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\",\"genre\":\"rock\",\"language\":\"español\",\"difficulty\":\"facil\"}"}
+{"name": "songs-post-spotify-guest", "method": "POST", "path": "/api/songs", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"title\":\"Canción Nueva SP\",\"artist\":\"Artista Nuevo\",\"platform\":\"spotify\",\"url\":\"https://open.spotify.com/track/0000000000000000000000\",\"genre\":\"pop\",\"language\":\"español\",\"difficulty\":\"media\"}"}
+{"name": "songs-patch-guest-403", "method": "PATCH", "path": "/api/songs/song_seed001", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"title\":\"No debería cambiar\"}"}
+{"name": "songs-post-local-guest-403", "method": "POST", "path": "/api/songs", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"title\":\"Vídeo Local Invitado\",\"platform\":\"local\",\"local_path\":\"rust/record-data/test-video.mp4\"}"}
+{"name": "queue-list", "method": "GET", "path": "/api/queue", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "queue-add-guest", "method": "POST", "path": "/api/queue", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"songId\":\"song_seed003\"}"}
+{"name": "queue-delete-other-403", "method": "DELETE", "path": "/api/queue/q_seed002", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "queue-next-guest-403", "method": "POST", "path": "/api/queue/next", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "queue-next-admin", "method": "POST", "path": "/api/queue/next", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}
+{"name": "player", "method": "GET", "path": "/api/player", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "media-range", "method": "GET", "path": "/api/media/local/song_seed003", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Range": "bytes=0-9"}}
+{"name": "media-full", "method": "GET", "path": "/api/media/local/song_seed003", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-delete-other-403", "method": "DELETE", "path": "/api/songs/song_seed001", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-delete-own", "method": "DELETE", "path": "/api/songs/song_seed002", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "songs-post-local-admin-exists", "method": "POST", "path": "/api/songs", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "Content-Type": "application/json"}, "body": "{\"title\":\"Vídeo Local Admin\",\"artist\":\"Artista C\",\"platform\":\"local\",\"local_path\":\"rust/record-data/test-video.mp4\"}"}
+{"name": "songs-post-local-admin-missing", "method": "POST", "path": "/api/songs", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "Content-Type": "application/json"}, "body": "{\"title\":\"Vídeo Perdido\",\"platform\":\"local\",\"local_path\":\"/definitivamente/no/existe.mp4\"}"}
+{"name": "requests-create-guest", "method": "POST", "path": "/api/requests", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"video_url\":\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\",\"title\":\"Petición Nueva\",\"artist\":\"Artista Nuevo\",\"difficulty\":\"dificil\",\"language\":\"español\",\"notes\":\"Por favor\"}"}
+{"name": "requests-patch-guest-403", "method": "PATCH", "path": "/api/requests/req_seed001", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", "Content-Type": "application/json"}, "body": "{\"status\":\"done\"}"}
+{"name": "requests-patch-admin", "method": "PATCH", "path": "/api/requests/req_seed001", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", "Content-Type": "application/json"}, "body": "{\"status\":\"in_progress\",\"admin_note\":\"En proceso\"}"}
+{"name": "requests-list-guest", "method": "GET", "path": "/api/requests", "headers": {"Authorization": "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"}}
+{"name": "requests-list-admin", "method": "GET", "path": "/api/requests", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}
+{"name": "logout-admin", "method": "POST", "path": "/api/auth/logout", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}
+{"name": "songs-admin-after-logout-401", "method": "GET", "path": "/api/songs", "headers": {"Authorization": "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"}}

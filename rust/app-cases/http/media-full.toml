@@ -1,0 +1,13 @@
+[request]
+method = "GET"
+path = "/api/media/local/song_seed003"
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+[response]
+status = 200
+
+[response.headers]
+accept-ranges = "bytes"
+content-type = "video/mp4"

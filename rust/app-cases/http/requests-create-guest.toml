@@ -1,0 +1,14 @@
+[request]
+method = "POST"
+path = "/api/requests"
+body = '{"video_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","title":"Petición Nueva","artist":"Artista Nuevo","difficulty":"dificil","language":"español","notes":"Por favor"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 201
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

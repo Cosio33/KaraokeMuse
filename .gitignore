@@ -1,0 +1,12 @@
+node_modules/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+
+# BD temporal de grabación (se siembra en cada arranque; nunca es la BD real).
+rust/record-data/
+
+# BD temporal de caracterización de auth (la borra el propio script).
+rust/auth-record-data/

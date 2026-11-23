@@ -1,0 +1,14 @@
+[request]
+method = "POST"
+path = "/api/songs"
+body = '{"title":"Vídeo Local Admin","artist":"Artista C","platform":"local","local_path":"rust/record-data/test-video.mp4"}'
+
+[request.headers]
+Authorization = "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+Content-Type = "application/json"
+
+[response]
+status = 401
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

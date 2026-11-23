@@ -1,0 +1,14 @@
+[request]
+method = "PATCH"
+path = "/api/requests/req_seed001"
+body = '{"status":"in_progress","admin_note":"En proceso"}'
+
+[request.headers]
+Authorization = "Bearer a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+Content-Type = "application/json"
+
+[response]
+status = 401
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

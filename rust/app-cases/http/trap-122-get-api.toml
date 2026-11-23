@@ -1,0 +1,12 @@
+[request]
+method = "GET"
+path = "/api/%C4%B1l%C4%B1k%20%C4%B1rmak?minRating=5"
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

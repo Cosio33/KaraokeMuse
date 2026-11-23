@@ -1,0 +1,12 @@
+[request]
+method = "GET"
+path = "/api/songs/"
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

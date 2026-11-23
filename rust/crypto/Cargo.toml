@@ -1,0 +1,13 @@
+[package]
+name = "karaoke-crypto"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Primitivas de autenticación de KaraokeMuse: scrypt + sha256 de tokens (crate hoja, sin BD)"
+
+[dependencies]
+scrypt = "0.12"
+sha2 = "0.11"
+getrandom = "0.4"
+hex = "0.4"
+subtle = "2.6"

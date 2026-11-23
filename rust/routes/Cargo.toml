@@ -1,0 +1,23 @@
+[package]
+name = "karaoke-routes"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Handlers HTTP de KaraokeMuse: rutas API, estáticos, rangos y oEmbed (port de server/index.js)"
+
+[dependencies]
+karaoke-db = { path = "../db" }
+karaoke-auth = { path = "../auth" }
+rusqlite = { version = "0.43", features = ["bundled", "limits"] }
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "signal", "time"] }
+# reqwest 0.12 como el front door (no 0.13: no mezclar dos stacks HTTP);
+# rustls-tls para el oEmbed HTTPS; no_proxy() como el fetch de Node.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+percent-encoding = "2.3"
+bytes = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

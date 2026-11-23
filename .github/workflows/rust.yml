@@ -1,0 +1,79 @@
+# CI Rust de KaraokeMuse: fmt, clippy, tests y binario release del
+# front door (`karaokemuse`) en Linux y Windows.
+#
+# Cada crate Rust es independiente (sin workspace raíz): los checks
+# corren por crate con su propio Cargo.toml/Cargo.lock. El binario
+# es el del front door (`rust/app`), que enlaza karaoke-db,
+# karaoke-auth y karaoke-routes por path.
+#
+# Solo CI de Rust: el servidor Node original no se prueba aquí
+# (sus 35 checks curl viven en TESTS.md y se corren en local).
+
+name: Rust
+
+on:
+  push:
+    branches: [main, rust-port]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            exe: ''
+            artifact: karaokemuse-linux-x86_64
+          - os: windows-latest
+            exe: '.exe'
+            artifact: karaokemuse-windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust/app
+            rust/routes
+            rust/db
+            rust/auth
+            rust/crypto
+
+      - name: fmt --check (todos los crates)
+        shell: bash
+        run: |
+          for crate in crypto db auth routes app; do
+            cargo fmt --check --manifest-path "rust/$crate/Cargo.toml"
+          done
+
+      - name: clippy -D warnings (todos los crates)
+        shell: bash
+        run: |
+          for crate in crypto db auth routes app; do
+            cargo clippy --all-targets --manifest-path "rust/$crate/Cargo.toml" -- -D warnings
+          done
+
+      - name: cargo test (todos los crates)
+        shell: bash
+        run: |
+          for crate in crypto db auth routes app; do
+            cargo test --locked --manifest-path "rust/$crate/Cargo.toml"
+          done
+
+      - name: build --release (front door)
+        shell: bash
+        run: cargo build --release --locked --manifest-path rust/app/Cargo.toml
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: rust/app/target/release/karaokemuse${{ matrix.exe }}
+          if-no-files-found: error

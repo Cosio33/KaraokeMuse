@@ -1,0 +1,208 @@
+# 🎤 KaraokeMuse en Rust — rama `rust-port`
+
+Port del servidor de KaraokeMuse (v1, Node 24) a **Rust puro**, con
+paridad total: mismas rutas, mismos status codes, mismas variables
+de entorno, mismo archivo SQLite y mismo formato JSON. El frontend
+(`public/`) no se porta: sigue en JavaScript y se sirve como
+archivos estáticos.
+
+> **Esta rama es el port, por separado.** `main` sigue con el
+> servidor Node v1.0.0 y el servidor Node (`server/`) queda en el
+> repo como referencia hasta que se decida el cambio. El merge
+> a `main` y el release **v2.0.0** se hacen solo con su decisión.
+
+Repo: https://github.com/Cosio33/KaraokeMuse
+
+## Estado
+
+- **Lift pasado el 2026-11-20**: `rust/app/rust-anything.json`
+  marca `"lifted": true`. La app es Rust pura: sin código Node en
+  el binario, sin proxy ni kill switches.
+- **Replay 295/295, fallback 0%** contra el binario release.
+- **44 tests** en los 5 crates, `cargo fmt --check` y
+  `clippy --all-targets -- -D warnings` limpios.
+- **CI en verde** (corrida n.º 2, 2026-11-20): fmt, clippy, tests
+  y build release en Linux y Windows. Artefactos:
+  `karaokemuse-linux-x86_64` (3.39 MB) y
+  `karaokemuse-windows-x86_64` (2.86 MB).
+- Binario release local `karaokemuse`: 8.2 MB (debug: 77 MB).
+
+## Qué se portó
+
+| Crate | Origen | Qué hace |
+|---|---|---|
+| `rust/crypto` (`karaoke-crypto`) | primitivas de `db`/`auth` | scrypt + sha256, verificados byte a byte contra vectores de Node |
+| `rust/db` (`karaoke-db`) | `server/db.js` (126 líneas) | SQLite: abrir, sembrar, sesiones; replay 140/140 |
+| `rust/auth` (`karaoke-auth`) | `server/auth.js` (50 líneas) | Login con scrypt, tokens opacos, sesiones; replay 9/9 + 6 de sesiones |
+| `rust/routes` (`karaoke-routes`) | `server/index.js` (388 líneas) | El núcleo: ~25 endpoints, estáticos, rangos (206), oEmbed YouTube/Spotify |
+| `rust/app` (front door axum) | — | Binario `karaokemuse`: axum + tokio, 18 rutas + catch-all |
+
+Cada crate es independiente (sin workspace raíz): cada uno tiene
+su propio `Cargo.toml` y `Cargo.lock`. El frontend, la PWA, los
+iconos y el service worker no se tocaron.
+
+## Requisitos
+
+- **Rust estable** (cargo + rustfmt + clippy). Nada más: el
+  binario final **no necesita Node** ni el código Node presente.
+- Para compilar en GitHub no hace falta nada local: la CI lo hace
+  en Linux y Windows (ver `.github/workflows/rust.yml`).
+
+### Instalar Rust (solo si vas a compilar en tu máquina)
+
+La forma oficial es **rustup** (https://rustup.rs). Verificado
+con Rust 1.100.0; la CI usa el stable más reciente.
+
+**Windows (la PC de Cosio33):**
+
+1. Descarga y ejecuta el instalador de https://rustup.rs
+   (`rustup-init.exe`).
+2. Acepta la instalación por defecto (tecla Enter).
+3. Cierra y vuelve a abrir la terminal (o reinicia la PC si el
+   comando no aparece).
+4. Comprueba:
+
+   ```bat
+   cargo --version
+   rustc --version
+   ```
+
+**Linux:**
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+cargo --version
+```
+
+**Componentes que usa el proyecto:**
+
+```bash
+rustup component add rustfmt clippy
+```
+
+(Suelen venir con la instalación por defecto; si ya están, el
+comando no hace nada.)
+
+La primera compilación descarga las dependencias de crates.io
+(axum, tokio, rusqlite, scrypt, etc.); después compila sin red.
+No hay `npm install` ni nada de Node en este paso.
+
+## Compilar
+
+Desde la raíz del repo:
+
+```bash
+cargo build --release --manifest-path rust/app/Cargo.toml
+```
+
+El binario queda en `rust/app/target/release/karaokemuse`
+(`karaokemuse.exe` en Windows).
+
+## Arrancar
+
+Igual que la v1: un solo comando, mismas variables de entorno,
+misma base de datos.
+
+```bash
+./rust/app/target/release/karaokemuse
+```
+
+El servidor arranca en `http://localhost:8080` y guarda los datos
+en `./data/karaokemuse.sqlite`. **Abre la base existente sin
+migración**: puedes arrancar el binario Rust sobre los datos que
+ya creó el servidor Node.
+
+| Variable | Por defecto | Qué hace |
+|---|---|---|
+| `PORT` | `8080` | Puerto del servidor |
+| `HOST` | `0.0.0.0` | Interfaz de escucha (en LAN, `0.0.0.0` para que otros equipos de la red lo vean) |
+| `DATA_DIR` | `./data` | Carpeta de la base SQLite |
+| `KARAOKE_ADMIN_USER` | `admin` | Usuario administrador |
+| `KARAOKE_ADMIN_PASSWORD` | `admin123` | Contraseña del admin — **cámbiala antes de abrir el servidor a nadie** |
+| `KARAOKE_ROOM_NAME` | `Sala principal` | Nombre de la sala |
+| `KARAOKE_ROOM_PASSWORD` | *(vacía)* | Contraseña opcional de la sala (los invitados la escriben a mano) |
+
+Variables solo para pruebas/replay (no las uses en producción):
+
+| Variable | Qué hace |
+|---|---|
+| `KARAOKE_RESET_RECORD_DB=1` | Resiembra la BD temporal de pruebas al arrancar (se niega a borrar un directorio que no se llame `record-data`; la BD real nunca se toca) |
+| `KARAOKE_PUBLIC_DIR` | Sobrescribe el directorio de estáticos (por defecto `<ROOT>/public`) |
+
+## Permisos (igual que v1)
+
+- **Invitados**: ver todo, agregar canciones por enlace de
+  YouTube o Spotify a la cola, y borrar solo las canciones que
+  ellos mismos agregaron. No pueden subir vídeos locales ni editar
+  nada.
+- **Admin**: todo lo demás (editar, vídeos locales, avanzar la
+  cola, gestionar solicitudes de generación de vídeo).
+- Los vídeos locales se **enlazan desde archivos del servidor,
+  nunca se suben ni se copian**. No hay generador de vídeo
+  integrado: la generación se hace aparte y se agrega a mano.
+
+## Verificar (tests + replay)
+
+```bash
+source ~/workspace/tools/rust-anything/env/rust-env.sh  # solo en la VM de Muse
+cd rust/crypto && cargo test   # 5/5
+cd ../db && cargo test         # 17 (10 unit + 3 seed + 3 record + replay 140/140)
+cd ../auth && cargo test       # 7 (replay 9/9 + 6 sesiones)
+cd ../routes && cargo test     # 15 (8 unit + 7 integración)
+cd ../app && cargo build --release && cargo clippy --all-targets -- -D warnings
+```
+
+Replay completo contra el binario release (295 casos grabados del
+servidor Node original):
+
+```bash
+cd ~/workspace/KaraokeMuse
+DATA_DIR=$PWD/rust/record-data KARAOKE_RESET_RECORD_DB=1 KARAOKE_PUBLIC_DIR=$PWD/public \
+  rust-anything app replay . --build "rust/app/target/release/karaokemuse"
+# 295/295, fallback 0%
+```
+
+Sin `DATA_DIR` el binario abriría `<ROOT>/data` (la BD real); sin
+`KARAOKE_RESET_RECORD_DB=1` la BD de pruebas no se resiembra.
+
+## CI
+
+`.github/workflows/rust.yml`: en cada push a `main` y `rust-port`
+(además de PR y tags `v*`) corre `fmt --check`, `clippy -D
+warnings`, `cargo test` y `build --release` en `ubuntu-latest` y
+`windows-latest`, y sube el binario como artefacto. Sin replay en
+CI (necesita Node).
+
+## Cómo se hizo
+
+Con **rust-anything** (record → bridge → diff → gate → lift)
+sobre el plan en
+`~/workspace/custom-skills/rust-anything/references/karaokemuse-plan*.md`
+de la VM de Muse. Decisiones en `rust/DECISIONS.md` (ADR-001 a
+ADR-018), mapa en `rust/MAP.md`. Dos detalles que costaron:
+
+- **ADR-015**: Node pasa la sal scrypt hex **como cadena**
+  (32 bytes UTF-8), no decodificada (16 bytes). El port lo hace
+  igual; el bug se encontró porque el login daba 401 tras el
+  primer cableado.
+- **ADR-017/018**: el lift pedía `src/port.rs` real en
+  `karaoke-routes` y un binario puro sin arrancar el original.
+  El lift se corrió con el build de rust-anything **desde fuente**,
+  porque el binario del release 1.5.1 no copia al stage las
+  dependencias por ruta.
+
+## Límites honestos
+
+- El caso `songs-random` del replay es débil (el orden aleatorio
+  se cubre con wildcards); se verificó a mano: 6 llamadas al
+  binario release, 3 canciones distintas en cada una.
+- `ORDER BY created_at DESC` con timestamps sembrados iguales no
+  garantiza orden en SQLite; el replay lo tolera con wildcards.
+- El estado se inicializa en la primera request, no en el
+  arranque: si la BD no abre, esa request da 500 en vez de tumbar
+  el arranque (desviación respecto a Node).
+- oEmbed real solo tiene cobertura del camino de error; la UI en
+  navegador real, el escaneo del QR y la reproducción de un MP4
+  real siguen sin verificarse (límite ya conocido de v1).
+- Sin target Termux/Android (aarch64) por ahora; se evalúa aparte.

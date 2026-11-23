@@ -1,0 +1,14 @@
+[request]
+method = "PATCH"
+path = "/api/%C4%B1l%C4%B1k%20%C4%B1rmak/song_seed001"
+body = '{"title":"No debería cambiar"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"

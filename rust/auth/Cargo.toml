@@ -1,0 +1,15 @@
+[package]
+name = "karaoke-auth"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Autenticación de KaraokeMuse: sesiones con token opaco (port de server/auth.js)"
+
+[dependencies]
+karaoke-db = { path = "../db" }
+karaoke-crypto = { path = "../crypto" }
+rusqlite = { version = "0.43", features = ["bundled", "limits"] }
+hex = "0.4"
+
+[dev-dependencies]
+serde_json = "1.0"

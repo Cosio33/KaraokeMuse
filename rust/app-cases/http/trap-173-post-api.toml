@@ -1,0 +1,14 @@
+[request]
+method = "POST"
+path = "/api/h%C3%A9llo%20w%C3%B6rld"
+body = '{"title":"Vídeo Nuevo YT","artist":"Artista Nuevo","platform":"youtube","url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","genre":"rock","language":"español","difficulty":"facil"}'
+
+[request.headers]
+Authorization = "Bearer b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+Content-Type = "application/json"
+
+[response]
+status = 404
+
+[response.headers]
+content-type = "application/json; charset=utf-8"
