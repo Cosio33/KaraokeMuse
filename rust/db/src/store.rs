@@ -189,6 +189,17 @@ pub fn open_database(data_dir: &JsValue) -> Result<Db, NodeError> {
     let conn = Connection::open(&path).map_err(NodeError::Sql)?;
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
     conn.execute_batch(DDL)?;
+    // Migración ADR-020: `player_state.previous_song_id` (botón
+    // Anterior del Player). Idempotente: solo se añade si la columna
+    // no existe. El servidor Node ignora la columna extra.
+    let has_prev: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('player_state') WHERE name = 'previous_song_id'",
+        [],
+        |r| r.get(0),
+    )?;
+    if has_prev == 0 {
+        conn.execute_batch("ALTER TABLE player_state ADD COLUMN previous_song_id TEXT;")?;
+    }
     Ok(Db { conn, path })
 }
 

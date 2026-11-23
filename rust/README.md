@@ -118,6 +118,32 @@ El binario publicado es suelto: basta con ponerlo junto a la carpeta
 hacen falta variables de entorno. Al arrancar imprime en la terminal
 `[karaokemuse] Servidor en http://localhost:<puerto>`.
 
+### Probarlo con el teléfono
+
+Abre `http://localhost:8080` en la PC y escanea el QR: la app ya usa
+sola la IP LAN de la PC para el QR (ADR-020), así que no hace falta abrir
+la IP a mano. Si el teléfono no conecta: comprueba que PC y teléfono
+estén en el mismo Wi-Fi y acepta el permiso de red de Windows cuando lo
+pida. Si el puerto 8080 está ocupado, arranca con `PORT=8081` (en CMD:
+`set PORT=8081` antes de ejecutar el `.exe` en la misma ventana).
+
+### Novedades tras la primera prueba (ADR-020)
+
+- **Player:** botones Anterior, Pausa y Siguiente (admin). La pausa
+  funciona en vídeos locales y YouTube; Spotify se pausa con su propio
+  control dentro del reproductor embebido.
+- **Spotify y vídeos locales:** los enlaces de Spotify con prefijo de
+  idioma (`/intl-es/`) ya embeben. Las rutas locales pegadas desde el
+  Explorador de Windows (con comillas) se corrigen solas al registrarse,
+  y en la pestaña Admin hay un explorador de carpetas del servidor para
+  elegir el vídeo sin teclear la ruta.
+- **Biblioteca:** el formulario va primero y el repertorio después, con
+  botón Editar en cada canción y casillas para agregar varias a la cola
+  o borrarlas a la vez.
+- **Admin:** desde la pestaña Admin se cambia el nombre y la contraseña
+  de la sala, se elimina la sala (se crea una nueva con código nuevo) y
+  se cambia la contraseña del admin.
+
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `PORT` | `8080` | Puerto del servidor |

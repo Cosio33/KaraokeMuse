@@ -410,3 +410,63 @@ cuando están fijadas. Al arrancar, el binario imprime en stderr
 `[karaokemuse] Servidor en http://localhost:<puerto>`, como la v1 Node.
 Consequences: el binario suelto funciona con `public/` a su lado, sin
 variables; el replay y los tests no cambian (usan las variables).
+
+## ADR-020: Mejoras tras la primera prueba real (QR, Spotify/local, Player, Biblioteca, Admin)
+Status: accepted (2026-11-23)
+Context: el usuario probó el binario Rust en su PC y reportó 4 cosas:
+(1) el QR escaneado desde `localhost` rechazaba la conexión; (2) Spotify
+y los vídeos locales no se reproducían, solo YouTube; (3) el Player solo
+avanzaba; (4) varios cambios de diseño en Biblioteca, Pedir vídeo y Admin.
+Decision:
+- QR con IP LAN automático: `GET /api/server-info` devuelve la IPv4 LAN
+  del servidor (truco del socket UDP a 8.8.8.8:80, sin enviar nada) y el
+  puerto del `Host`; el frontend usa esa URL para el QR cuando la página
+  se abrió como `localhost`. El README documenta además el paso manual
+  (`ipconfig` + abrir `http://192.168.x.x:8080`).
+- Spotify: `embedUrl` aceptaba solo `open.spotify.com/track/…`; los
+  enlaces compartidos traen prefijo de idioma (`/intl-es/`, `/es/`) y el
+  embed devolvía null. El regex ahora lo acepta.
+- Vídeos locales, dos causas reales: (a) la ruta pegada desde el
+  Explorador de Windows viene entrecomillada ("Copiar como ruta de
+  acceso") y `Path::exists()` fallaba en el registro; ahora
+  `normalize_local_path()` quita comillas/espacios, prefijo `file://` y
+  unifica barras, en alta y en edición. (b) El elemento `<video>` no
+  puede mandar el header `Authorization`, así que `/api/media/local`
+  siempre daba 401 en el navegador aunque la canción existiera: el
+  token de sesión ahora también se acepta como `?token=` (mismo token,
+  se invalida con logout) y el frontend lo añade a la URL del vídeo.
+- Player: `POST /api/queue/previous` (admin) vuelve a la canción
+  anterior: `queue_next` guarda la actual en `player_state.previous_song_id`
+  (columna nueva, migración idempotente en `open_database`; el servidor
+  Node ignora la columna extra). La actual vuelve al frente de la cola.
+  Pausa: `<video>` con play/pause del DOM; YouTube con `enablejsapi=1` +
+  postMessage; Spotify no expone control por JS, se pausa con su propio
+  botón dentro del reproductor embebido (se avisa en la UI).
+- Biblioteca: el formulario de alta va primero y el repertorio después,
+  con una línea que explica el flujo (agregar → añadir a la cola); se
+  quitó el tag de Notas; botón Editar (admin, `PATCH /api/songs/:id`
+  ya existía) que carga la canción en el formulario; casillas de
+  selección con alta masiva a la cola y borrado masivo (reutilizan los
+  endpoints existentes, respetando sus permisos).
+- Pedir vídeo: descripción simple ("Pide una canción que no esté en
+  YouTube y el administrador la subirá") y `(Opcional)` en los campos
+  no obligatorios.
+- Admin: `GET /api/admin/browse?dir=…` lista carpetas y vídeos del
+  servidor para elegir la ruta sin teclearla (el navegador no puede dar
+  la ruta completa de un archivo por seguridad; el explorador es el
+  sustituto viable). `PATCH /api/room` cambia nombre y/o contraseña de
+  sala (vacía = quitarla); `DELETE /api/room` elimina la sala y crea una
+  nueva con código nuevo (repertorio y usuarios se conservan, la cola se
+  vacía). `PATCH /api/admin/password` cambia la contraseña del admin
+  pidiendo la actual. Para que esto funcione, `AppState.room` pasó a
+  `Mutex<Room>` (se clona con `current_room()` antes de bloquear la BD).
+- Todo esto vive solo en la rama `rust-port`; `main` (Node v1.0.0) no se
+  toca. Los tests de `karaoke-routes` pasan de 7 a 13 (server-info,
+  previous, sala, contraseña de admin, normalización de ruta + browse,
+  token por query).
+Consequences: el QR funciona abriendo el servidor como `localhost` en la
+PC; Spotify con `intl-es` embebe; los vídeos locales se registran con la
+ruta copiada del Explorador y se reproducen en el `<video>`; el Player
+tiene Anterior/Pausa/Siguiente; la sala y la contraseña de admin se
+gestionan desde la UI. El token de sesión aparece en la URL del vídeo
+local (solo en red local, mismo token que ya viaja en el header).

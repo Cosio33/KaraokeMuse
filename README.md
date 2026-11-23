@@ -140,6 +140,17 @@ cualquiera puede leer — base64 no es cifrado. Aquí la contraseña de
 sala, si existe, **no va en el QR**: el invitado la escribe a mano
 después de escanear.
 
+**QR con la IP local (versión Rust):** el QR se genera con la dirección
+con la que abriste la página. Si la abriste como `localhost`, el
+teléfono entendería `localhost` como él mismo y rechazaría la conexión.
+La versión Rust lo evita sola: cuando la página se abrió como
+`localhost`, el QR lleva la IP LAN de la PC (`GET /api/server-info`).
+Si prefieres hacerlo a mano: en la PC ejecuta `ipconfig`, busca la
+Dirección IPv4 del Wi-Fi (ej. `192.168.1.15`) y abre en el navegador
+`http://192.168.1.15:8080` (con tu puerto) antes de escanear. El teléfono
+y la PC deben estar en el mismo Wi-Fi, y Windows puede pedir permiso
+para que el programa acepte conexiones de la red: acéptalo.
+
 ## Límites honestos
 
 - **Derechos de autor:** compartir vídeos de karaoke con música

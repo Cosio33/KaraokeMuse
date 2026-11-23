@@ -10,6 +10,7 @@
 //! - Las respuestas JSON se escriben con `crate::json::write_json`
 //!   (formato numérico de JS), nunca con `serde_json::to_string`.
 
+use std::net::UdpSocket;
 use std::path::Path;
 use std::sync::MutexGuard;
 
@@ -20,7 +21,8 @@ use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-use karaoke_auth::{UserRow, create_session, get_user_from_token, verify_password};
+use karaoke_auth::{UserRow, create_session, get_user_from_token, hash_password, verify_password};
+use karaoke_db::Room;
 use karaoke_db::js::JsValue;
 use karaoke_db::store::Db;
 use karaoke_db::time::now_iso;
@@ -76,13 +78,76 @@ fn lock_db(state: &AppState) -> MutexGuard<'_, Db> {
     state.db.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// La sala actual, clonada del estado (ADR-020: `room` vive en un
+/// `Mutex` porque `PATCH /api/room` la cambia en caliente). Se clona
+/// antes de bloquear la BD para no anidar bloqueos.
+fn current_room(state: &AppState) -> Room {
+    state.room.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// `id` de la sala actual.
+fn room_id(state: &AppState) -> String {
+    current_room(state).id
+}
+
+/// Normaliza una ruta local de vídeo pegada por el admin (ADR-020):
+/// quita espacios y comillas de alrededor (el Explorador de Windows
+/// con "Copiar como ruta de acceso" las añade), quita un prefijo
+/// `file://` y unifica las barras al separador del sistema. Sin esto,
+/// `Path::exists()` fallaba y el vídeo nunca se registraba.
+fn normalize_local_path(raw: &str) -> String {
+    let mut p = raw.trim().to_string();
+    if (p.starts_with('"') && p.ends_with('"') && p.len() >= 2)
+        || (p.starts_with('\'') && p.ends_with('\'') && p.len() >= 2)
+    {
+        p = p[1..p.len() - 1].to_string();
+    }
+    let p = p.trim();
+    let p = p.strip_prefix("file://").unwrap_or(p);
+    let p = p.strip_prefix("file:").unwrap_or(p);
+    if cfg!(windows) {
+        p.replace('/', "\\")
+    } else {
+        p.replace('\\', "/")
+    }
+}
+
+/// IP LAN (IPv4) de esta máquina, si se puede saber (ADR-020): abrir
+/// un socket UDP hacia una IP pública no envía nada, solo consulta la
+/// tabla de rutas. Sirve para que el QR lleve la IP local aunque la
+/// página se abriera como `localhost`.
+fn lan_ipv4() -> Option<String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let addr = socket.local_addr().ok()?;
+    if addr.ip().is_loopback() {
+        None
+    } else {
+        Some(addr.ip().to_string())
+    }
+}
+
 /// `authUser(req)`: el usuario de la sesión Bearer, o `None`.
 fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Option<UserRow>, String> {
-    let token = headers
+    auth_user_query(state, headers, "")
+}
+
+/// `authUser` aceptando el token también por query (`?token=`), solo
+/// para el streaming de vídeo: el elemento `<video>` del navegador no
+/// puede mandar headers personalizados, así que sin esto los vídeos
+/// locales nunca cargaban (401) aunque la canción estuviera bien
+/// registrada. Es el mismo token de sesión y se invalida con logout.
+fn auth_user_query(
+    state: &AppState,
+    headers: &HeaderMap,
+    query: &str,
+) -> Result<Option<UserRow>, String> {
+    let header_token = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .map(|t| t.to_string());
+    let token = header_token.or_else(|| query_param(query, "token"));
     let mut db = lock_db(state);
     get_user_from_token(&mut db, token.as_deref()).map_err(|e| e.to_string())
 }
@@ -201,15 +266,27 @@ pub async fn handle(state: &AppState, ctx: Ctx) -> RResult {
             Ok(u) => u,
             Err(r) => return Ok(r),
         };
-        let room = &state.room;
+        let room = current_room(state);
         return Ok(json_response(
             200,
             &json!({"id": room.id, "name": room.name, "code": room.code,
                      "hasPassword": room.password_hash.as_deref().is_some_and(|h| !h.is_empty())}),
         ));
     }
+    if p == "/api/room" && method == Method::PATCH {
+        return room_patch(state, ctx).await;
+    }
+    if p == "/api/room" && method == Method::DELETE {
+        return room_delete(state, &ctx);
+    }
     if p == "/api/join" && method == Method::POST {
         return join(state, ctx).await;
+    }
+
+    // Info del servidor para el QR (ADR-020): sin autenticación, solo
+    // revela la IP LAN a quien ya está en la red local.
+    if p == "/api/server-info" && method == Method::GET {
+        return server_info(&ctx);
     }
 
     // Metadatos del enlace (oEmbed)
@@ -260,8 +337,19 @@ pub async fn handle(state: &AppState, ctx: Ctx) -> RResult {
     if p == "/api/queue/next" && method == Method::POST {
         return queue_next(state, &ctx);
     }
+    if p == "/api/queue/previous" && method == Method::POST {
+        return queue_previous(state, &ctx);
+    }
     if p == "/api/player" && method == Method::GET {
         return player(state, &ctx);
+    }
+
+    // Admin: contraseña y explorador de vídeos locales (ADR-020)
+    if p == "/api/admin/password" && method == Method::PATCH {
+        return admin_password(state, ctx).await;
+    }
+    if p == "/api/admin/browse" && method == Method::GET {
+        return admin_browse(state, &ctx);
     }
 
     // Solicitudes de generación de vídeo karaoke
@@ -355,14 +443,15 @@ async fn join(state: &AppState, ctx: Ctx) -> RResult {
     let b = read_body(ctx.body).await?;
     let code = js_string_or_empty(field(&b, "code"));
     let code = js_trim(&code).to_uppercase();
-    if code != state.room.code {
+    let room = current_room(state);
+    if code != room.code {
         return Ok(err_json(
             404,
             "Código de sala incorrecto. Escanea el QR de nuevo.",
         ));
     }
-    if let Some(hash) = state.room.password_hash.as_ref().filter(|h| !h.is_empty()) {
-        let salt = state.room.salt.clone().unwrap_or_default();
+    if let Some(hash) = room.password_hash.as_ref().filter(|h| !h.is_empty()) {
+        let salt = room.salt.clone().unwrap_or_default();
         let password = js_string_or_empty(field(&b, "password"));
         if !verify_password(&password, &salt, hash) {
             return Ok(err_json(401, "Contraseña de sala incorrecta."));
@@ -395,7 +484,6 @@ async fn join(state: &AppState, ctx: Ctx) -> RResult {
         let s = create_session(&mut db, &id, 7).map_err(|e| e.to_string())?;
         (s.token, s.expires_at)
     };
-    let room = &state.room;
     Ok(json_response(
         200,
         &json!({"token": token, "expiresAt": expires_at,
@@ -489,14 +577,17 @@ async fn songs_create(state: &AppState, ctx: Ctx) -> RResult {
         _ => "youtube".to_string(),
     };
     if platform == "local" {
-        let local_path = js_string_or_empty(field(&b, "local_path"));
+        let local_path = normalize_local_path(&js_string_or_empty(field(&b, "local_path")));
         if !Path::new(&local_path).exists() {
             return Ok(err_json(
                 400,
-                &format!("El archivo local no existe en el servidor: {local_path}"),
+                &format!(
+                    "El archivo local no existe en el servidor: {local_path}. Revisa la ruta en la PC donde corre el servidor (sin comillas)."
+                ),
             ));
         }
     }
+    let local_path = normalize_local_path(&js_string_or_empty(field(&b, "local_path")));
     let now = now_iso();
     let id = new_id_str("song").map_err(|e| e.to_string())?;
     let title = js_trim(&js_string_or_empty(field(&b, "title"))).to_string();
@@ -526,7 +617,7 @@ async fn songs_create(state: &AppState, ctx: Ctx) -> RResult {
                 ),
                 rusqlite::types::Value::Text(platform),
                 rusqlite::types::Value::Text(js_string_or_empty(field(&b, "url"))),
-                rusqlite::types::Value::Text(js_string_or_empty(field(&b, "local_path"))),
+                rusqlite::types::Value::Text(local_path),
                 rusqlite::types::Value::Text(js_string_or_empty(field(&b, "thumbnail_url"))),
                 rusqlite::types::Value::Text(js_string_or_empty(field(&b, "genre"))),
                 rusqlite::types::Value::Text(js_string_or_empty(field(&b, "language"))),
@@ -604,11 +695,20 @@ async fn songs_patch(state: &AppState, ctx: Ctx) -> RResult {
                 return Ok(err_json(400, "rating debe ser entero de 0 a 5"));
             }
         }
+        // ADR-020: la ruta local se normaliza también al editar.
+        let v = if f == "local_path" {
+            match v {
+                Value::String(s) => Value::String(normalize_local_path(s)),
+                other => other.clone(),
+            }
+        } else {
+            v.clone()
+        };
         sets.push(format!("{f} = ?"));
         vals.push(if f == "is_favorite" {
-            rusqlite::types::Value::Integer(if js_truthy(Some(v)) { 1 } else { 0 })
+            rusqlite::types::Value::Integer(if js_truthy(Some(&v)) { 1 } else { 0 })
         } else {
-            json_to_sql(v)?
+            json_to_sql(&v)?
         });
     }
     if sets.is_empty() {
@@ -668,12 +768,13 @@ fn queue_list(state: &AppState, ctx: &Ctx) -> RResult {
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
+    let rid = room_id(state);
     let rows = {
         let db = lock_db(state);
         query_all(
             &db.conn,
             "SELECT q.id AS queue_id, q.position, q.user_id, q.created_at AS queued_at, s.*, u.username AS added_by FROM queue q JOIN songs s ON s.id = q.song_id LEFT JOIN users u ON u.id = q.user_id WHERE q.room_id = ?1 ORDER BY q.position ASC",
-            [state.room.id.as_str()],
+            [rid.as_str()],
         )
         .map_err(|e| e.to_string())?
     };
@@ -732,12 +833,13 @@ async fn queue_add(state: &AppState, ctx: Ctx) -> RResult {
         .to_string();
     let now = now_iso();
     let qid = new_id_str("q").map_err(|e| e.to_string())?;
+    let rid = room_id(state);
     {
         let db = lock_db(state);
         let max = query_one(
             &db.conn,
             "SELECT MAX(position) AS m FROM queue WHERE room_id = ?1",
-            [state.room.id.as_str()],
+            [rid.as_str()],
         )
         .map_err(|e| e.to_string())?;
         let pos = match max.as_ref().and_then(|r| r.get("m")) {
@@ -749,7 +851,7 @@ async fn queue_add(state: &AppState, ctx: Ctx) -> RResult {
             "INSERT INTO queue (id, room_id, song_id, user_id, position, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             vec![
                 rusqlite::types::Value::Text(qid.clone()),
-                rusqlite::types::Value::Text(state.room.id.clone()),
+                rusqlite::types::Value::Text(rid),
                 rusqlite::types::Value::Text(song_id),
                 rusqlite::types::Value::Text(user.id.clone()),
                 rusqlite::types::Value::Integer(pos),
@@ -795,12 +897,13 @@ fn queue_next(state: &AppState, ctx: &Ctx) -> RResult {
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
+    let rid = room_id(state);
     let first = {
         let db = lock_db(state);
         query_one(
             &db.conn,
             "SELECT * FROM queue WHERE room_id = ?1 ORDER BY position ASC LIMIT 1",
-            [state.room.id.as_str()],
+            [rid.as_str()],
         )
         .map_err(|e| e.to_string())?
     };
@@ -841,13 +944,28 @@ fn queue_next(state: &AppState, ctx: &Ctx) -> RResult {
                 .unwrap_or(rusqlite::types::Value::Null),
             None => rusqlite::types::Value::Null,
         };
+        // ADR-020: la canción que sonaba pasa a `previous_song_id`
+        // para que el botón Anterior pueda volver a ella.
+        let previous = query_one(
+            &db.conn,
+            "SELECT current_song_id FROM player_state WHERE room_id = ?1",
+            [rid.as_str()],
+        )
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.get("current_song_id").cloned())
+        .unwrap_or(Value::Null);
+        let previous = match previous {
+            Value::String(s) => rusqlite::types::Value::Text(s),
+            _ => rusqlite::types::Value::Null,
+        };
         exec_sql(
             &db.conn,
-            "UPDATE player_state SET current_song_id = ?1, updated_at = ?2 WHERE room_id = ?3",
+            "UPDATE player_state SET current_song_id = ?1, previous_song_id = ?2, updated_at = ?3 WHERE room_id = ?4",
             vec![
                 current,
+                previous,
                 rusqlite::types::Value::Text(now_iso()),
-                rusqlite::types::Value::Text(state.room.id.clone()),
+                rusqlite::types::Value::Text(rid.clone()),
             ],
         )?;
         song
@@ -864,12 +982,13 @@ fn player(state: &AppState, ctx: &Ctx) -> RResult {
         Ok(u) => u,
         Err(r) => return Ok(r),
     };
+    let rid = room_id(state);
     let song = {
         let db = lock_db(state);
         let st = query_one(
             &db.conn,
             "SELECT * FROM player_state WHERE room_id = ?1",
-            [state.room.id.as_str()],
+            [rid.as_str()],
         )
         .map_err(|e| e.to_string())?;
         match st.and_then(|s| s.get("current_song_id").cloned()) {
@@ -885,6 +1004,343 @@ fn player(state: &AppState, ctx: &Ctx) -> RResult {
         None => Value::Null,
     };
     Ok(json_response(200, &json!({ "song": out })))
+}
+
+/// `POST /api/queue/previous` (ADR-020, admin): vuelve a la canción
+/// anterior. La actual vuelve al frente de la cola y la anterior pasa
+/// a sonar; sin anterior, `{song: null}`.
+fn queue_previous(state: &AppState, ctx: &Ctx) -> RResult {
+    let user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let rid = room_id(state);
+    let song = {
+        let db = lock_db(state);
+        let st = query_one(
+            &db.conn,
+            "SELECT current_song_id, previous_song_id FROM player_state WHERE room_id = ?1",
+            [rid.as_str()],
+        )
+        .map_err(|e| e.to_string())?;
+        let current = st.as_ref().and_then(|s| s.get("current_song_id")).cloned();
+        let previous = st.as_ref().and_then(|s| s.get("previous_song_id")).cloned();
+        let Some(Value::String(prev_id)) = previous else {
+            return Ok(json_response(
+                200,
+                &json!({ "song": null, "message": "No hay canción anterior." }),
+            ));
+        };
+        // La actual vuelve al frente de la cola (posición menor que la mínima).
+        let min = query_one(
+            &db.conn,
+            "SELECT MIN(position) AS m FROM queue WHERE room_id = ?1",
+            [rid.as_str()],
+        )
+        .map_err(|e| e.to_string())?;
+        let min_pos = match min.as_ref().and_then(|r| r.get("m")) {
+            Some(Value::Number(n)) => n.as_i64().unwrap_or(1),
+            _ => 1,
+        };
+        if let Some(Value::String(cur_id)) = current {
+            let qid = new_id_str("q").map_err(|e| e.to_string())?;
+            exec_sql(
+                &db.conn,
+                "INSERT INTO queue (id, room_id, song_id, user_id, position, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                vec![
+                    rusqlite::types::Value::Text(qid),
+                    rusqlite::types::Value::Text(rid.clone()),
+                    rusqlite::types::Value::Text(cur_id),
+                    rusqlite::types::Value::Text(user.id.clone()),
+                    rusqlite::types::Value::Integer(min_pos - 1),
+                    rusqlite::types::Value::Text(now_iso()),
+                ],
+            )?;
+        }
+        exec_sql(
+            &db.conn,
+            "UPDATE player_state SET current_song_id = ?1, previous_song_id = NULL, updated_at = ?2 WHERE room_id = ?3",
+            vec![
+                rusqlite::types::Value::Text(prev_id.clone()),
+                rusqlite::types::Value::Text(now_iso()),
+                rusqlite::types::Value::Text(rid.clone()),
+            ],
+        )?;
+        query_one(
+            &db.conn,
+            "SELECT * FROM songs WHERE id = ?1",
+            [prev_id.as_str()],
+        )
+        .map_err(|e| e.to_string())?
+    };
+    let out = match &song {
+        Some(s) => song_out(s),
+        None => Value::Null,
+    };
+    Ok(json_response(200, &json!({ "song": out })))
+}
+
+/// `GET /api/server-info` (ADR-020): IP LAN del servidor y su URL,
+/// para que el QR lleve la dirección local aunque la página se
+/// abriera como `localhost`. El puerto se toma del `Host` de la
+/// request (el puerto con el que ya se llegó al servidor).
+fn server_info(ctx: &Ctx) -> RResult {
+    let port = ctx
+        .headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.rsplit(':').next())
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8080);
+    let lan_ip = lan_ipv4();
+    let lan_url = lan_ip.as_ref().map(|ip| format!("http://{ip}:{port}"));
+    Ok(json_response(
+        200,
+        &json!({ "lan_ip": lan_ip, "lan_url": lan_url, "port": port }),
+    ))
+}
+
+/// `PATCH /api/room` (ADR-020, admin): cambia el nombre de la sala
+/// y/o su contraseña de entrada. `password: ""` quita la contraseña.
+async fn room_patch(state: &AppState, ctx: Ctx) -> RResult {
+    let _user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let b = read_body(ctx.body).await?;
+    let mut room = current_room(state);
+    if let Some(Value::String(name)) = field(&b, "name") {
+        let name = js_trim(name).to_string();
+        if name.is_empty() || name.chars().count() > 60 {
+            return Ok(err_json(
+                400,
+                "El nombre de la sala debe tener entre 1 y 60 caracteres.",
+            ));
+        }
+        room.name = name;
+    }
+    if let Some(Value::String(pw)) = field(&b, "password") {
+        if pw.is_empty() {
+            room.password_hash = None;
+            room.salt = None;
+        } else {
+            if pw.chars().count() < 4 || pw.chars().count() > 64 {
+                return Ok(err_json(
+                    400,
+                    "La contraseña de la sala debe tener entre 4 y 64 caracteres.",
+                ));
+            }
+            let (salt, hash) = hash_password(pw).map_err(|e| e.to_string())?;
+            room.salt = Some(salt);
+            room.password_hash = Some(hash);
+        }
+    }
+    {
+        let db = lock_db(state);
+        exec_sql(
+            &db.conn,
+            "UPDATE rooms SET name = ?1, password_hash = ?2, salt = ?3 WHERE id = ?4",
+            vec![
+                rusqlite::types::Value::Text(room.name.clone()),
+                room.password_hash
+                    .clone()
+                    .map(rusqlite::types::Value::Text)
+                    .unwrap_or(rusqlite::types::Value::Null),
+                room.salt
+                    .clone()
+                    .map(rusqlite::types::Value::Text)
+                    .unwrap_or(rusqlite::types::Value::Null),
+                rusqlite::types::Value::Text(room.id.clone()),
+            ],
+        )?;
+    }
+    *state.room.lock().unwrap_or_else(|e| e.into_inner()) = room.clone();
+    Ok(json_response(
+        200,
+        &json!({"id": room.id, "name": room.name, "code": room.code,
+                 "hasPassword": room.password_hash.as_deref().is_some_and(|h| !h.is_empty())}),
+    ))
+}
+
+/// `DELETE /api/room` (ADR-020, admin): elimina la sala actual y crea
+/// una nueva con código nuevo. El repertorio y los usuarios se
+/// conservan; la cola y lo que sonaba se vacían. Las sesiones siguen
+/// válidas, pero hay que volver a entrar con el código nuevo.
+fn room_delete(state: &AppState, ctx: &Ctx) -> RResult {
+    let user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let old = current_room(state);
+    let new_room = {
+        let db = lock_db(state);
+        exec_sql(
+            &db.conn,
+            "DELETE FROM queue WHERE room_id = ?1",
+            vec![rusqlite::types::Value::Text(old.id.clone())],
+        )?;
+        exec_sql(
+            &db.conn,
+            "DELETE FROM player_state WHERE room_id = ?1",
+            vec![rusqlite::types::Value::Text(old.id.clone())],
+        )?;
+        exec_sql(
+            &db.conn,
+            "DELETE FROM rooms WHERE id = ?1",
+            vec![rusqlite::types::Value::Text(old.id.clone())],
+        )?;
+        let id = new_id_str("room").map_err(|e| e.to_string())?;
+        let code = random_code(Some(&JsValue::Num(6.0))).map_err(|e| e.to_string())?;
+        let now = now_iso();
+        exec_sql(
+            &db.conn,
+            "INSERT INTO rooms (id, name, code, password_hash, salt, created_by, created_at) VALUES (?1, ?2, ?3, NULL, NULL, ?4, ?5)",
+            vec![
+                rusqlite::types::Value::Text(id.clone()),
+                rusqlite::types::Value::Text("Sala principal".to_string()),
+                rusqlite::types::Value::Text(code.clone()),
+                rusqlite::types::Value::Text(user.id.clone()),
+                rusqlite::types::Value::Text(now.clone()),
+            ],
+        )?;
+        exec_sql(
+            &db.conn,
+            "INSERT OR IGNORE INTO player_state (room_id, current_song_id, updated_at) VALUES (?1, NULL, ?2)",
+            vec![
+                rusqlite::types::Value::Text(id.clone()),
+                rusqlite::types::Value::Text(now.clone()),
+            ],
+        )?;
+        Room {
+            id,
+            name: "Sala principal".to_string(),
+            code,
+            password_hash: None,
+            salt: None,
+            created_by: Some(user.id.clone()),
+            created_at: now,
+        }
+    };
+    *state.room.lock().unwrap_or_else(|e| e.into_inner()) = new_room.clone();
+    Ok(json_response(
+        200,
+        &json!({"id": new_room.id, "name": new_room.name, "code": new_room.code, "hasPassword": false}),
+    ))
+}
+
+/// `PATCH /api/admin/password` (ADR-020, admin): cambia la contraseña
+/// del admin. Pide la actual para verificarla.
+async fn admin_password(state: &AppState, ctx: Ctx) -> RResult {
+    let user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let b = read_body(ctx.body).await?;
+    let current = js_string_or_empty(field(&b, "current_password"));
+    let new = js_string_or_empty(field(&b, "new_password"));
+    if new.chars().count() < 6 || new.chars().count() > 64 {
+        return Ok(err_json(
+            400,
+            "La contraseña nueva debe tener entre 6 y 64 caracteres.",
+        ));
+    }
+    let (salt, hash) = {
+        let db = lock_db(state);
+        let row = query_one(
+            &db.conn,
+            "SELECT * FROM users WHERE id = ?1",
+            [user.id.as_str()],
+        )
+        .map_err(|e| e.to_string())?;
+        let Some(row) = row else {
+            return Ok(err_json(404, "Usuario no encontrado."));
+        };
+        let old_salt = row.get("salt").and_then(|v| v.as_str()).unwrap_or("");
+        let old_hash = row
+            .get("password_hash")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if old_hash.is_empty() || !verify_password(&current, old_salt, old_hash) {
+            return Ok(err_json(401, "La contraseña actual no es correcta."));
+        }
+        hash_password(&new).map_err(|e| e.to_string())?
+    };
+    {
+        let db = lock_db(state);
+        exec_sql(
+            &db.conn,
+            "UPDATE users SET password_hash = ?1, salt = ?2 WHERE id = ?3",
+            vec![
+                rusqlite::types::Value::Text(hash),
+                rusqlite::types::Value::Text(salt),
+                rusqlite::types::Value::Text(user.id.clone()),
+            ],
+        )?;
+    }
+    Ok(json_response(200, &json!({ "ok": true })))
+}
+
+/// `GET /api/admin/browse?dir=...` (ADR-020, admin): lista carpetas y
+/// vídeos de una carpeta del servidor, para elegir la ruta local sin
+/// teclearla. Solo rutas absolutas; como mucho 200 entradas, primero
+/// las carpetas y luego los vídeos por nombre.
+fn admin_browse(state: &AppState, ctx: &Ctx) -> RResult {
+    let _user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let dir_raw = query_param(&ctx.query, "dir").unwrap_or_default();
+    let dir = normalize_local_path(&dir_raw);
+    let path = Path::new(&dir);
+    if !path.is_absolute() {
+        return Ok(err_json(
+            400,
+            "Escribe la ruta completa de la carpeta (ej. C:\\Karaoke\\videos).",
+        ));
+    }
+    let rd = match std::fs::read_dir(path) {
+        Ok(r) => r,
+        Err(_) => {
+            return Ok(err_json(
+                400,
+                &format!("No se puede leer esa carpeta en el servidor: {dir}"),
+            ));
+        }
+    };
+    let mut entries: Vec<Value> = Vec::new();
+    for e in rd.flatten().take(200) {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        let is_dir = p.is_dir();
+        let ext = p
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let is_video = ["mp4", "webm", "mkv", "mov", "avi"].contains(&ext.as_str());
+        if !is_dir && !is_video {
+            continue;
+        }
+        entries.push(json!({
+            "name": name,
+            "path": p.to_string_lossy(),
+            "is_dir": is_dir,
+        }));
+    }
+    entries.sort_by(|a, b| {
+        let ad = a.get("is_dir").and_then(|v| v.as_bool()).unwrap_or(false);
+        let bd = b.get("is_dir").and_then(|v| v.as_bool()).unwrap_or(false);
+        bd.cmp(&ad).then(
+            a.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or("")),
+        )
+    });
+    Ok(json_response(
+        200,
+        &json!({ "dir": dir, "entries": entries }),
+    ))
 }
 
 fn requests_list(state: &AppState, ctx: &Ctx) -> RResult {
@@ -1030,9 +1486,9 @@ async fn requests_patch(state: &AppState, ctx: Ctx) -> RResult {
 /// (`/bytes=(\d*)-(\d*)/`, sin anclar), y el `content-length` es el
 /// de Node (`end - start + 1`, sin recortar).
 async fn media_local(state: &AppState, ctx: Ctx) -> RResult {
-    let _user = match need_auth(state, &ctx.headers)? {
-        Ok(u) => u,
-        Err(r) => return Ok(r),
+    let _user = match auth_user_query(state, &ctx.headers, &ctx.query)? {
+        Some(u) => u,
+        None => return Ok(unauthenticated()),
     };
     let id = ctx.path.split('/').nth(4).unwrap_or("");
     let song = {

@@ -24,10 +24,13 @@ function youtubeId(url) {
 function embedUrl(song) {
   if (song.platform === 'youtube') {
     const id = youtubeId(song.url);
-    return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0` : null;
+    // enablejsapi=1: el botón Pausa del Player controla el vídeo por postMessage.
+    return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&enablejsapi=1` : null;
   }
   if (song.platform === 'spotify') {
-    const m = String(song.url || '').match(/open\.spotify\.com\/(track|album|playlist|episode)\/([\w]+)/);
+    // Acepta el prefijo de idioma que Spotify añade al compartir
+    // (ej. open.spotify.com/intl-es/track/…), que antes no embebía.
+    const m = String(song.url || '').match(/open\.spotify\.com\/(?:(?:intl-[a-z]{2}|[a-z]{2}(?:-[a-z]{2})?)\/)?(track|album|playlist|episode)\/([\w]+)/);
     return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator` : null;
   }
   return null;
@@ -40,6 +43,8 @@ function showApp() {
   $('sessionBar').classList.remove('hidden');
   $('sessionInfo').textContent = `${me.username} (${me.role === 'admin' ? 'admin' : 'invitado'}) · Sala ${room ? room.name : ''}`;
   $('adminTab').style.display = me.role === 'admin' ? '' : 'none';
+  $('prevBtn').style.display = me.role === 'admin' ? '' : 'none';
+  $('playerNextBtn').style.display = me.role === 'admin' ? '' : 'none';
   if (me.role !== 'admin') switchTab('library');
   drawQR();
   refreshAll();
@@ -49,11 +54,27 @@ function showAuth() {
   $('appView').classList.add('hidden');
   $('sessionBar').classList.add('hidden');
 }
-function drawQR() {
+async function drawQR() {
   if (!room) return;
   $('roomName').textContent = room.name;
   $('roomCode').textContent = room.code;
-  const joinUrl = `${location.origin}/?room=${room.code}`;
+  // Si la página se abrió como localhost, el QR llevaría localhost y
+  // el móvil se buscaría a sí mismo. En ese caso se usa la IP LAN del
+  // servidor (viene de /api/server-info) para que el QR funcione.
+  let origin = location.origin;
+  let lanNote = '';
+  const host = location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    try {
+      const info = await api('/api/server-info');
+      if (info.lan_url) {
+        origin = info.lan_url;
+        lanNote = `QR con la IP local de la PC (${info.lan_ip}). El teléfono y la PC deben estar en el mismo Wi-Fi.`;
+      }
+    } catch (e) { /* sin IP LAN, el QR usa localhost como antes */ }
+  }
+  const joinUrl = `${origin}/?room=${room.code}`;
+  $('qrLanNote').textContent = lanNote;
   try {
     const qr = qrcode(0, 'M');
     qr.addData(joinUrl);
@@ -69,7 +90,7 @@ function switchTab(name) {
   if (name === 'player') loadPlayer();
   if (name === 'sing') shuffleSing();
   if (name === 'requests') loadRequests();
-  if (name === 'admin') loadAdminRequests();
+  if (name === 'admin') { loadAdminRoom(); loadAdminRequests(); }
 }
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
@@ -85,19 +106,33 @@ async function loadSongs() {
   if (minRating) params.set('minRating', minRating);
   const d = await api(`/api/songs?${params}`);
   songs = d.songs;
-  $('songList').innerHTML = songs.length ? songs.map(songCard).join('') : '<p>No hay canciones todavía. Agrega la primera con el formulario de abajo.</p>';
+  $('songList').innerHTML = songs.length ? songs.map(songCard).join('') : '<p>No hay canciones todavía. Agrega la primera con el formulario de arriba.</p>';
+  updateBulkBar();
 }
+let selected = new Set();
 function songCard(s) {
   const thumb = s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" alt="">` : '<img alt="">';
-  return `<div class="song">${thumb}<div class="info"><b>${esc(s.title)}</b>
+  const canEdit = me && me.role === 'admin';
+  return `<div class="song"><input type="checkbox" class="sel" ${selected.has(s.id) ? 'checked' : ''} onchange="toggleSelect('${s.id}', this.checked)">${thumb}<div class="info"><b>${esc(s.title)}</b>
     <div class="meta">${esc(s.artist || 'Sin artista')} · ${platformLabel(s.platform)} · ${esc(s.genre || '')} ${esc(s.language || '')} · ${esc(s.difficulty)} · ${stars(s.rating)}${s.is_favorite ? ' ⭐' : ''}</div>
-    <div class="meta">${esc(s.status === 'want' ? 'Quiero aprenderla' : s.status === 'practicing' ? 'En práctica' : 'La domino')}</div>
-    ${s.notes ? `<div class="meta">📝 ${esc(s.notes)}</div>` : ''}</div>
+    <div class="meta">${esc(s.status === 'want' ? 'Quiero aprenderla' : s.status === 'practicing' ? 'En práctica' : 'La domino')}</div></div>
     <div class="actions">
       <button class="btn small" onclick="addToQueue('${s.id}')">+ Cola</button>
+      ${canEdit ? `<button class="btn small" onclick="editSong('${s.id}')">✏️ Editar</button>` : ''}
       ${s.url ? `<a class="btn small" href="${esc(s.url)}" target="_blank" rel="noopener">Abrir</a>` : ''}
       <button class="btn small" onclick="deleteSong('${s.id}')">🗑 Borrar</button>
     </div></div>`;
+}
+window.toggleSelect = (id, on) => {
+  if (on) selected.add(id); else selected.delete(id);
+  updateBulkBar();
+};
+function updateBulkBar() {
+  const n = selected.size;
+  $('bulkBar').classList.toggle('hidden', n === 0);
+  $('bulkCount').textContent = n ? `${n} seleccionada${n > 1 ? 's' : ''}` : '';
+  const all = $('selAll');
+  if (all) all.checked = songs.length > 0 && songs.every((s) => selected.has(s.id));
 }
 window.addToQueue = async (id) => {
   try { await api('/api/queue', { method: 'POST', body: JSON.stringify({ songId: id }) }); await loadQueue(); alert('Agregada a la cola 🎶'); }
@@ -123,20 +158,67 @@ window.removeQueue = async (id) => {
   catch (e) { alert(e.message); }
 };
 
+let currentSong = null;
+let ytPaused = false;
 async function loadPlayer() {
   const d = await api('/api/player');
   const box = $('playerBox');
+  currentSong = d.song;
+  ytPaused = false;
+  const pauseBtn = $('pauseBtn');
+  if (pauseBtn) pauseBtn.textContent = '⏸ Pausa';
   if (!d.song) { box.innerHTML = '<p>Aún no hay canción sonando. Pide la siguiente desde la Cola.</p>'; $('lyricsBox').classList.add('hidden'); return; }
   const s = d.song;
   box.innerHTML = `<h3>${esc(s.title)} — ${esc(s.artist || '')}</h3>` + (
     s.platform === 'local'
-      ? `<video src="/api/media/local/${s.id}" controls autoplay></video>`
+      ? `<video src="/api/media/local/${s.id}?token=${encodeURIComponent(token)}" controls autoplay></video>`
       : embedUrl(s)
-        ? `<iframe src="${esc(embedUrl(s))}" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`
+        ? `<iframe data-platform="${esc(s.platform)}" src="${esc(embedUrl(s))}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
         : `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">Abrir en ${esc(s.platform)}</a> (no se pudo embeber este enlace).</p>`);
   if (s.lyrics_text) { $('lyricsBox').classList.remove('hidden'); $('lyricsText').textContent = s.lyrics_text; }
   else $('lyricsBox').classList.add('hidden');
 }
+
+// Controles del Player: anterior / pausa / siguiente (admin).
+// Pausa actúa sobre el vídeo o el iframe de YouTube de ESTE
+// dispositivo; Spotify no expone control por JS, se pausa con su
+// propio botón dentro del reproductor embebido.
+async function nextSong() {
+  try {
+    const d = await api('/api/queue/next', { method: 'POST' });
+    await loadQueue(); await loadPlayer();
+    $('playerMsg').textContent = d.song ? '' : 'La cola está vacía.';
+  } catch (e) { $('playerMsg').textContent = e.message; }
+}
+$('prevBtn').addEventListener('click', async () => {
+  try {
+    const d = await api('/api/queue/previous', { method: 'POST' });
+    await loadQueue(); await loadPlayer();
+    $('playerMsg').textContent = d.song ? '' : 'No hay canción anterior.';
+  } catch (e) { $('playerMsg').textContent = e.message; }
+});
+$('pauseBtn').addEventListener('click', () => {
+  const video = document.querySelector('#playerBox video');
+  const frame = document.querySelector('#playerBox iframe');
+  const btn = $('pauseBtn');
+  if (video) {
+    if (video.paused) video.play(); else video.pause();
+    btn.textContent = video.paused ? '▶️ Seguir' : '⏸ Pausa';
+    return;
+  }
+  if (frame && frame.dataset.platform === 'youtube') {
+    frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: ytPaused ? 'play' : 'pause', args: '' }), '*');
+    ytPaused = !ytPaused;
+    btn.textContent = ytPaused ? '▶️ Seguir' : '⏸ Pausa';
+    return;
+  }
+  if (frame) {
+    $('playerMsg').textContent = 'Spotify se pausa con su propio control dentro del reproductor.';
+    return;
+  }
+  $('playerMsg').textContent = 'No hay nada sonando.';
+});
+$('playerNextBtn').addEventListener('click', nextSong);
 
 async function shuffleSing() {
   try {
@@ -200,9 +282,76 @@ $('logoutBtn').addEventListener('click', async () => {
   token = ''; me = null; room = null; localStorage.removeItem('km_token'); showAuth();
 });
 
-// Biblioteca: filtros y alta
+// Biblioteca: filtros, alta y edición
 ['fSearch', 'fPlatform', 'fRating'].forEach((id) => $(id).addEventListener('input', () => loadSongs().catch(() => {})));
 $('fClear').addEventListener('click', () => { $('fSearch').value = ''; $('fPlatform').value = ''; $('fRating').value = '0'; loadSongs(); });
+
+// Edición de canciones (admin): carga la canción en el formulario y
+// el botón Agregar pasa a guardar los cambios (PATCH).
+let editingId = null;
+let editingPlatform = null;
+let editingLocalPath = '';
+window.editSong = (id) => {
+  const s = songs.find((x) => x.id === id);
+  if (!s) return;
+  editingId = id;
+  editingPlatform = s.platform;
+  editingLocalPath = s.local_path || '';
+  $('sUrl').value = s.platform === 'local' ? (s.local_path || '') : (s.url || '');
+  $('sTitle').value = s.title || '';
+  $('sArtist').value = s.artist || '';
+  $('sGenre').value = s.genre || '';
+  $('sLang').value = s.language || '';
+  $('sDiff').value = s.difficulty || 'media';
+  $('sStatus').value = s.status || 'want';
+  $('sRating').value = s.rating || 0;
+  $('sFav').checked = !!s.is_favorite;
+  $('addSongBtn').dataset.platform = s.platform;
+  $('addSongBtn').dataset.thumb = s.thumbnail_url || '';
+  $('addSongBtn').textContent = '💾 Guardar cambios';
+  $('cancelEditBtn').classList.remove('hidden');
+  $('addMsg').textContent = `Editando "${s.title}".`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+function resetEditMode() {
+  editingId = null; editingPlatform = null; editingLocalPath = '';
+  $('addSongBtn').textContent = 'Agregar canción';
+  $('cancelEditBtn').classList.add('hidden');
+  delete $('addSongBtn').dataset.thumb; delete $('addSongBtn').dataset.platform;
+}
+$('cancelEditBtn').addEventListener('click', () => {
+  resetEditMode();
+  ['sUrl', 'sTitle', 'sArtist', 'sGenre', 'sLang'].forEach((id) => { $(id).value = ''; });
+  $('sRating').value = '0'; $('sFav').checked = false;
+  $('addMsg').textContent = '';
+});
+
+// Selección masiva del repertorio: agregar a la cola o borrar varias.
+$('selAll').addEventListener('change', (e) => {
+  songs.forEach((s) => { if (e.target.checked) selected.add(s.id); else selected.delete(s.id); });
+  loadSongs();
+});
+$('bulkQueueBtn').addEventListener('click', async () => {
+  let ok = 0; let fail = 0;
+  for (const id of [...selected]) {
+    try { await api('/api/queue', { method: 'POST', body: JSON.stringify({ songId: id }) }); ok++; }
+    catch (e) { fail++; }
+  }
+  selected.clear(); updateBulkBar();
+  await loadQueue(); await loadSongs();
+  alert(`${ok} en la cola 🎶${fail ? ` (${fail} fallaron)` : ''}`);
+});
+$('bulkDeleteBtn').addEventListener('click', async () => {
+  if (!selected.size || !confirm(`¿Borrar ${selected.size} canciones del repertorio?`)) return;
+  let ok = 0; let fail = 0;
+  for (const id of [...selected]) {
+    try { await api(`/api/songs/${id}`, { method: 'DELETE' }); ok++; }
+    catch (e) { fail++; }
+  }
+  selected.clear(); updateBulkBar();
+  await loadSongs(); await loadQueue();
+  if (fail) alert(`${ok} borradas, ${fail} no se pudieron borrar (solo el admin borra canciones de otros).`);
+});
 $('detectBtn').addEventListener('click', async () => {
   const url = $('sUrl').value.trim();
   if (!url) { $('detectMsg').textContent = 'Pega primero el enlace.'; return; }
@@ -217,27 +366,34 @@ $('detectBtn').addEventListener('click', async () => {
   } catch (e) { $('detectMsg').textContent = e.message; }
 });
 $('addSongBtn').addEventListener('click', async () => {
-  const platform = $('addSongBtn').dataset.platform || (/spotify/.test($('sUrl').value) ? 'spotify' : 'youtube');
+  const platform = editingPlatform || $('addSongBtn').dataset.platform || (/spotify/.test($('sUrl').value) ? 'spotify' : 'youtube');
+  const body = {
+    title: $('sTitle').value, artist: $('sArtist').value, platform,
+    url: platform === 'local' ? '' : $('sUrl').value,
+    local_path: platform === 'local' ? ($('sUrl').value || editingLocalPath) : '',
+    thumbnail_url: $('addSongBtn').dataset.thumb || '',
+    genre: $('sGenre').value, language: $('sLang').value, difficulty: $('sDiff').value,
+    status: $('sStatus').value, rating: Number($('sRating').value || 0),
+    is_favorite: $('sFav').checked,
+  };
   try {
-    await api('/api/songs', { method: 'POST', body: JSON.stringify({
-      title: $('sTitle').value, artist: $('sArtist').value, platform,
-      url: $('sUrl').value, thumbnail_url: $('addSongBtn').dataset.thumb || '',
-      genre: $('sGenre').value, language: $('sLang').value, difficulty: $('sDiff').value,
-      status: $('sStatus').value, rating: Number($('sRating').value || 0),
-      is_favorite: $('sFav').checked, notes: $('sNotes').value,
-    }) });
-    $('addMsg').textContent = 'Canción agregada ✅';
-    ['sUrl', 'sTitle', 'sArtist', 'sGenre', 'sLang', 'sNotes'].forEach((id) => { $(id).value = ''; });
+    if (editingId) {
+      await api(`/api/songs/${editingId}`, { method: 'PATCH', body: JSON.stringify(body) });
+      $('addMsg').textContent = 'Cambios guardados ✅';
+      resetEditMode();
+    } else {
+      await api('/api/songs', { method: 'POST', body: JSON.stringify(body) });
+      $('addMsg').textContent = 'Canción agregada ✅';
+    }
+    ['sUrl', 'sTitle', 'sArtist', 'sGenre', 'sLang'].forEach((id) => { $(id).value = ''; });
+    $('sRating').value = '0'; $('sFav').checked = false;
     delete $('addSongBtn').dataset.thumb; delete $('addSongBtn').dataset.platform;
     await loadSongs();
   } catch (e) { $('addMsg').textContent = e.message; }
 });
 
 // Cola: siguiente (admin)
-$('nextBtn').addEventListener('click', async () => {
-  try { const d = await api('/api/queue/next', { method: 'POST' }); await loadQueue(); await loadPlayer(); if (!d.song) alert('La cola está vacía.'); }
-  catch (e) { alert(e.message); }
-});
+$('nextBtn').addEventListener('click', nextSong);
 $('shuffleBtn').addEventListener('click', shuffleSing);
 
 // Solicitudes
@@ -251,6 +407,62 @@ $('reqBtn').addEventListener('click', async () => {
     ['rUrl', 'rTitle', 'rArtist', 'rLang', 'rNotes'].forEach((id) => { $(id).value = ''; });
     await loadRequests();
   } catch (e) { $('reqMsg').textContent = e.message; }
+});
+
+// Admin: sala
+function loadAdminRoom() {
+  if (room) $('roomNameInput').value = room.name || '';
+}
+$('saveRoomBtn').addEventListener('click', async () => {
+  try {
+    const body = { name: $('roomNameInput').value };
+    if ($('roomPassClear').checked) body.password = '';
+    else if ($('roomPassInput').value) body.password = $('roomPassInput').value;
+    const d = await api('/api/room', { method: 'PATCH', body: JSON.stringify(body) });
+    room = d;
+    $('roomMsg').textContent = 'Sala guardada ✅';
+    $('roomPassInput').value = ''; $('roomPassClear').checked = false;
+    drawQR();
+  } catch (e) { $('roomMsg').textContent = e.message; }
+});
+$('deleteRoomBtn').addEventListener('click', async () => {
+  if (!confirm('¿Eliminar la sala? Se crea una nueva con código nuevo, la cola se vacía y el repertorio se conserva. Todos tendrán que entrar con el código nuevo.')) return;
+  try {
+    const d = await api('/api/room', { method: 'DELETE' });
+    room = d;
+    $('roomMsg').textContent = `Sala nueva creada. Código: ${d.code}`;
+    drawQR();
+  } catch (e) { $('roomMsg').textContent = e.message; }
+});
+$('changePassBtn').addEventListener('click', async () => {
+  try {
+    await api('/api/admin/password', { method: 'PATCH', body: JSON.stringify({ current_password: $('adminCurPass').value, new_password: $('adminNewPass').value }) });
+    $('passMsg').textContent = 'Contraseña cambiada ✅';
+    $('adminCurPass').value = ''; $('adminNewPass').value = '';
+  } catch (e) { $('passMsg').textContent = e.message; }
+});
+
+// Admin: explorar carpetas del servidor para elegir el vídeo local.
+// El navegador no puede dar la ruta completa de un archivo (seguridad),
+// así que el servidor lista la carpeta y al hacer clic se llena la ruta.
+$('browseBtn').addEventListener('click', async () => {
+  const dir = $('lBrowseDir').value.trim();
+  if (!dir) { $('localMsg').textContent = 'Escribe primero la carpeta en el servidor.'; return; }
+  try {
+    const d = await api(`/api/admin/browse?dir=${encodeURIComponent(dir)}`);
+    $('browseList').innerHTML = d.entries.length ? d.entries.map((e) => `
+      <button class="btn small browse-item" data-path="${esc(e.path)}" data-dir="${e.is_dir ? '1' : ''}">${e.is_dir ? '📁' : '🎬'} ${esc(e.name)}</button>`).join('') : '<p class="small">Carpeta vacía o sin vídeos.</p>';
+    document.querySelectorAll('.browse-item').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.dir === '1') {
+        $('lBrowseDir').value = b.dataset.path;
+        $('browseBtn').click();
+      } else {
+        $('lPath').value = b.dataset.path;
+        if (!$('lTitle').value) $('lTitle').value = b.dataset.path.split(/[\\/]/).pop().replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+        $('localMsg').textContent = 'Ruta elegida ✅ Revisa el título y registra el vídeo.';
+      }
+    }));
+  } catch (e) { $('localMsg').textContent = e.message; }
 });
 
 // Admin: vídeo local

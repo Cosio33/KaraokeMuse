@@ -53,7 +53,7 @@ fn state_for(dir: &Path) -> AppState {
     let client = reqwest::Client::builder().no_proxy().build().unwrap();
     AppState {
         db: Mutex::new(db),
-        room,
+        room: Mutex::new(room),
         public_dir: dir.join("public"),
         client,
     }
@@ -121,7 +121,7 @@ async fn admin_token(state: &AppState) -> String {
 }
 
 async fn guest_token(state: &AppState) -> String {
-    let code = state.room.code.clone();
+    let code = state.room.lock().unwrap().code.clone();
     let (_, body) = call(
         state,
         req_json(
@@ -177,7 +177,7 @@ async fn health_and_me() {
 async fn join_and_room() {
     let dir = test_dir("join");
     let state = state_for(&dir);
-    let code = state.room.code.clone();
+    let code = state.room.lock().unwrap().code.clone();
 
     let (status, body) = call(
         &state,
@@ -671,4 +671,428 @@ async fn metadata_unsupported_and_body_limits() {
     let (status, body) = call(&state, r).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(body, json!({"error": "Error interno del servidor."}));
+}
+
+#[tokio::test]
+async fn server_info_shape() {
+    // ADR-020: sin autenticación, con la forma esperada; el puerto es
+    // 8080 porque la request de prueba no trae Host.
+    let dir = test_dir("server-info");
+    let state = state_for(&dir);
+    let (status, body) = call(&state, req_plain(Method::GET, "/api/server-info", None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["port"], 8080);
+    assert!(body.get("lan_ip").is_some());
+    assert!(body.get("lan_url").is_some());
+}
+
+#[tokio::test]
+async fn queue_previous_flow() {
+    // ADR-020: next guarda la anterior; previous vuelve a ella y la
+    // actual regresa al frente de la cola.
+    let dir = test_dir("previous");
+    let state = state_for(&dir);
+    let guest = guest_token(&state).await;
+    let admin = admin_token(&state).await;
+
+    let mut ids = Vec::new();
+    for title in ["A", "B"] {
+        let (_, body) = call(
+            &state,
+            req_json(
+                Method::POST,
+                "/api/songs",
+                Some(&guest),
+                json!({"title": title, "platform": "youtube",
+                       "url": "https://www.youtube.com/watch?v=a"}),
+            ),
+        )
+        .await;
+        let id = body["song"]["id"].as_str().unwrap().to_string();
+        let (status, _) = call(
+            &state,
+            req_json(
+                Method::POST,
+                "/api/queue",
+                Some(&guest),
+                json!({"songId": id}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        ids.push(id);
+    }
+
+    // previous como invitado → 403.
+    let (status, _) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/previous", Some(&guest)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Sin anterior todavía → null.
+    let (status, body) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/previous", Some(&admin)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["song"], Value::Null);
+
+    // next → A; next → B; previous → A otra vez, B al frente de la cola.
+    let (_, body) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/next", Some(&admin)),
+    )
+    .await;
+    assert_eq!(body["song"]["title"], "A");
+    let (_, body) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/next", Some(&admin)),
+    )
+    .await;
+    assert_eq!(body["song"]["title"], "B");
+    let (status, body) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/previous", Some(&admin)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["song"]["title"], "A");
+    let (_, body) = call(&state, req_plain(Method::GET, "/api/queue", Some(&guest))).await;
+    assert_eq!(body["queue"].as_array().unwrap().len(), 1);
+    assert_eq!(body["queue"][0]["song"]["title"], "B");
+    let (_, body) = call(&state, req_plain(Method::GET, "/api/player", Some(&guest))).await;
+    assert_eq!(body["song"]["title"], "A");
+
+    // Ya no hay anterior (se consumió).
+    let (status, body) = call(
+        &state,
+        req_plain(Method::POST, "/api/queue/previous", Some(&admin)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["song"], Value::Null);
+    let _ = ids;
+}
+
+#[tokio::test]
+async fn room_patch_and_delete() {
+    // ADR-020: renombrar, poner/quitar contraseña de sala y eliminar
+    // la sala (se crea una nueva con código nuevo).
+    let dir = test_dir("room-admin");
+    let state = state_for(&dir);
+    let guest = guest_token(&state).await;
+    let admin = admin_token(&state).await;
+    let old_code = state.room.lock().unwrap().code.clone();
+
+    // Invitado no puede editar la sala.
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            "/api/room",
+            Some(&guest),
+            json!({"name": "Otra"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Renombrar + poner contraseña.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            "/api/room",
+            Some(&admin),
+            json!({"name": "Karaoke de Prueba", "password": "secreta"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["name"], "Karaoke de Prueba");
+    assert_eq!(body["code"], old_code);
+    assert_eq!(body["hasPassword"], true);
+
+    // Entrar sin contraseña → 401; con ella → 200.
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/join",
+            None,
+            json!({"code": old_code, "name": "SinClave"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/join",
+            None,
+            json!({"code": old_code, "name": "ConClave", "password": "secreta"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["room"]["name"], "Karaoke de Prueba");
+
+    // Quitar la contraseña.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            "/api/room",
+            Some(&admin),
+            json!({"password": ""}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["hasPassword"], false);
+
+    // Eliminar como invitado → 403; como admin → sala nueva.
+    let (status, _) = call(&state, req_plain(Method::DELETE, "/api/room", Some(&guest))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, body) = call(&state, req_plain(Method::DELETE, "/api/room", Some(&admin))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["name"], "Sala principal");
+    assert_ne!(body["code"].as_str().unwrap(), old_code);
+    let new_code = body["code"].as_str().unwrap().to_string();
+
+    // El código viejo ya no entra; el nuevo sí.
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/join",
+            None,
+            json!({"code": old_code, "name": "Viejo"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/join",
+            None,
+            json!({"code": new_code, "name": "Nuevo"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn admin_password_change() {
+    // ADR-020: con la actual mal → 401; con la actual bien → 200 y la
+    // nueva ya sirve para entrar.
+    let dir = test_dir("admin-pass");
+    let state = state_for(&dir);
+    let admin = admin_token(&state).await;
+
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            "/api/admin/password",
+            Some(&admin),
+            json!({"current_password": "nope", "new_password": "nueva123"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            "/api/admin/password",
+            Some(&admin),
+            json!({"current_password": "admin123", "new_password": "nueva123"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"ok": true}));
+
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/auth/login",
+            None,
+            json!({"username": "admin", "password": "admin123"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/auth/login",
+            None,
+            json!({"username": "admin", "password": "nueva123"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["token"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn local_path_normalization_and_browse() {
+    // ADR-020: una ruta con comillas (como la que copia el Explorador
+    // de Windows) se registra igual, guardada ya normalizada; y el
+    // explorador lista los vídeos de la carpeta.
+    let dir = test_dir("local-path");
+    let video = dir.join("mi-cancion.mp4");
+    std::fs::write(&video, b"fake mp4").unwrap();
+    let state = state_for(&dir);
+    let admin = admin_token(&state).await;
+    let guest = guest_token(&state).await;
+
+    // Ruta inexistente → 400 con la ruta en el mensaje.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/songs",
+            Some(&admin),
+            json!({"title": "Falta", "platform": "local",
+                   "local_path": dir.join("no-existe.mp4").to_string_lossy()}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("no existe"));
+
+    // Con comillas alrededor → 201 y guardada sin comillas.
+    let quoted = format!("\"{}\"", video.to_string_lossy());
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/songs",
+            Some(&admin),
+            json!({"title": "Local", "platform": "local", "local_path": quoted}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        body["song"]["local_path"].as_str(),
+        Some(video.to_str().unwrap())
+    );
+    let song_id = body["song"]["id"].as_str().unwrap().to_string();
+
+    // PATCH con otra ruta entrecomillada también normaliza.
+    let video2 = dir.join("otra.mp4");
+    std::fs::write(&video2, b"fake mp4 2").unwrap();
+    let quoted2 = format!("\"{}\"", video2.to_string_lossy());
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::PATCH,
+            &format!("/api/songs/{song_id}"),
+            Some(&admin),
+            json!({"local_path": quoted2}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["song"]["local_path"].as_str(),
+        Some(video2.to_str().unwrap())
+    );
+
+    // Explorar: invitado → 403; admin → ve el mp4 y no otros archivos.
+    std::fs::write(dir.join("nota.txt"), b"no es video").unwrap();
+    let (status, _) = call(
+        &state,
+        req_plain(
+            Method::GET,
+            &format!("/api/admin/browse?dir={}", dir.to_string_lossy()),
+            Some(&guest),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, body) = call(
+        &state,
+        req_plain(
+            Method::GET,
+            &format!("/api/admin/browse?dir={}", dir.to_string_lossy()),
+            Some(&admin),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let entries = body["entries"].as_array().unwrap();
+    assert!(entries.iter().any(|e| e["name"] == "mi-cancion.mp4"));
+    assert!(!entries.iter().any(|e| e["name"] == "nota.txt"));
+
+    // Ruta relativa → 400.
+    let (status, _) = call(
+        &state,
+        req_plain(
+            Method::GET,
+            "/api/admin/browse?dir=relativa/videos",
+            Some(&admin),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn media_token_by_query() {
+    // ADR-020: el <video> no manda el header Authorization; el token
+    // por query (?token=) debe servir igual, y sin token → 401.
+    let dir = test_dir("media-query");
+    let video = dir.join("test-video.mp4");
+    std::fs::write(&video, b"fake-mp4-content-0123456789abcdefghijklmno").unwrap();
+    let state = state_for(&dir);
+    let admin = admin_token(&state).await;
+
+    let (_, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/songs",
+            Some(&admin),
+            json!({"title": "Local", "platform": "local",
+                   "local_path": video.to_string_lossy()}),
+        ),
+    )
+    .await;
+    let song_id = body["song"]["id"].as_str().unwrap().to_string();
+
+    // Sin token → 401 (como lo veía el <video> antes del arreglo).
+    let (status, _) = call(
+        &state,
+        req_plain(Method::GET, &format!("/api/media/local/{song_id}"), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Con ?token= → 200 con el cuerpo completo.
+    let (status, bytes, _) = call_raw(
+        &state,
+        req_plain(
+            Method::GET,
+            &format!("/api/media/local/{song_id}?token={admin}"),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(bytes.len(), 42);
 }

@@ -27,7 +27,11 @@ use handlers::{Ctx, handle};
 
 pub struct AppState {
     pub db: Mutex<Db>,
-    pub room: Room,
+    /// La sala sembrada. En `Mutex` porque `PATCH /api/room` y
+    /// `DELETE /api/room` (ADR-020) la cambian en caliente; los
+    /// handlers la clonan con `current_room()` y nunca la leen
+    /// mientras tienen el `db` bloqueado.
+    pub room: Mutex<Room>,
     pub public_dir: PathBuf,
     pub client: reqwest::Client,
 }
@@ -61,7 +65,7 @@ impl AppState {
             .map_err(|e| e.to_string())?;
         let state = AppState {
             db: Mutex::new(db),
-            room,
+            room: Mutex::new(room),
             public_dir,
             client,
         };

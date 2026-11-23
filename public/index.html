@@ -58,6 +58,7 @@
       <h2>📱 Únete con el QR</h2>
       <p>Escanea el código con el móvil para entrar a la sala <strong id="roomName"></strong> (código <strong id="roomCode"></strong>).</p>
       <div id="qrBox" class="qr"></div>
+      <p id="qrLanNote" class="small"></p>
       <p class="small">El QR solo lleva la dirección y el código de sala. Si la sala tiene contraseña, se escribe a mano tras escanear — nunca viaja en el QR.</p>
     </section>
 
@@ -71,17 +72,8 @@
     </nav>
 
     <section id="tab-library" class="tabpane card">
-      <h2>Mi repertorio</h2>
-      <div class="filters">
-        <input id="fSearch" type="search" placeholder="Buscar título, artista o género…">
-        <select id="fPlatform"><option value="">Todas las plataformas</option><option value="youtube">YouTube</option><option value="spotify">Spotify</option><option value="local">Vídeo local</option></select>
-        <select id="fRating"><option value="0">Cualquier calificación</option><option value="1">★ 1 o más</option><option value="2">★ 2 o más</option><option value="3">★ 3 o más</option><option value="4">★ 4 o más</option><option value="5">★ Solo 5</option></select>
-        <button id="fClear" class="btn small">Limpiar</button>
-      </div>
-      <div id="songList" class="songlist"></div>
-
-      <h3>Agregar canción (enlace YouTube o Spotify)</h3>
-      <p class="small">Los invitados solo pueden agregar enlaces. Los vídeos locales solo los registra el admin en la pestaña Admin.</p>
+      <h2>Agregar canción (enlace YouTube o Spotify)</h2>
+      <p class="small">Pega el enlace, detecta el título y agrégala al repertorio. Para que suene, después márcala y agrégala a la cola (o usa el botón + Cola de cada canción).</p>
       <div class="formgrid">
         <label>Enlace <input id="sUrl" type="url" placeholder="https://www.youtube.com/watch?v=… o https://open.spotify.com/track/…"></label>
         <button id="detectBtn" class="btn">🔍 Detectar título y artista</button>
@@ -97,11 +89,27 @@
           <select id="sStatus"><option value="want">Quiero aprenderla</option><option value="practicing">En práctica</option><option value="mastered">La domino</option></select>
         </label>
         <label>Calificación (0–5) <input id="sRating" type="number" min="0" max="5" value="0"></label>
-        <label>Notas <input id="sNotes" type="text" placeholder="Notas para cantarla…"></label>
         <label class="check"><input id="sFav" type="checkbox"> Favorita ⭐</label>
       </div>
       <button id="addSongBtn" class="btn primary">Agregar canción</button>
+      <button id="cancelEditBtn" class="btn small hidden">Cancelar edición</button>
       <p id="addMsg" class="msg"></p>
+      <p class="small">Los invitados solo pueden agregar enlaces. Los vídeos locales solo los registra el admin en la pestaña Admin.</p>
+
+      <h2>Mi repertorio</h2>
+      <div class="filters">
+        <input id="fSearch" type="search" placeholder="Buscar título, artista o género…">
+        <select id="fPlatform"><option value="">Todas las plataformas</option><option value="youtube">YouTube</option><option value="spotify">Spotify</option><option value="local">Vídeo local</option></select>
+        <select id="fRating"><option value="0">Cualquier calificación</option><option value="1">★ 1 o más</option><option value="2">★ 2 o más</option><option value="3">★ 3 o más</option><option value="4">★ 4 o más</option><option value="5">★ Solo 5</option></select>
+        <button id="fClear" class="btn small">Limpiar</button>
+      </div>
+      <div id="bulkBar" class="bulkbar hidden">
+        <label class="check"><input id="selAll" type="checkbox"> Todas</label>
+        <span id="bulkCount"></span>
+        <button id="bulkQueueBtn" class="btn small">+ Cola</button>
+        <button id="bulkDeleteBtn" class="btn small">🗑 Borrar</button>
+      </div>
+      <div id="songList" class="songlist"></div>
     </section>
 
     <section id="tab-queue" class="tabpane card hidden">
@@ -115,6 +123,12 @@
       <h2>Player</h2>
       <p class="small">Pantalla completa en el dispositivo del anfitrión. YouTube y Spotify usan su reproductor oficial embebido; los vídeos locales se reproducen desde el disco del servidor.</p>
       <div id="playerBox" class="playerbox"><p>Aún no hay canción sonando. Pide la siguiente desde la Cola.</p></div>
+      <div class="player-controls">
+        <button id="prevBtn" class="btn">⏮ Anterior</button>
+        <button id="pauseBtn" class="btn">⏸ Pausa</button>
+        <button id="playerNextBtn" class="btn primary">⏭ Siguiente</button>
+      </div>
+      <p id="playerMsg" class="msg"></p>
       <div id="lyricsBox" class="lyrics hidden"><h3>Letra</h3><pre id="lyricsText"></pre></div>
     </section>
 
@@ -127,16 +141,16 @@
 
     <section id="tab-requests" class="tabpane card hidden">
       <h2>✨ Pide un vídeo karaoke</h2>
-      <p class="small">El generador de vídeos NO está en esta app: se genera en la VM de Muse y el admin lo agrega manualmente. Aquí solo dejas la solicitud.</p>
+      <p class="small">Pide una canción que no esté en YouTube y el administrador la subirá.</p>
       <div class="formgrid">
         <label>Enlace del vídeo original * <input id="rUrl" type="url" placeholder="https://www.youtube.com/watch?v=…"></label>
         <label>Nombre de la canción * <input id="rTitle" type="text"></label>
-        <label>Artista <input id="rArtist" type="text"></label>
-        <label>Dificultad
+        <label>Artista (Opcional) <input id="rArtist" type="text"></label>
+        <label>Dificultad (Opcional)
           <select id="rDiff"><option value="facil">Fácil</option><option value="media" selected>Media</option><option value="dificil">Difícil</option></select>
         </label>
-        <label>Idioma <input id="rLang" type="text" placeholder="Español"></label>
-        <label>Notas <input id="rNotes" type="text" placeholder="Versión, tono, algo que deba saber el admin…"></label>
+        <label>Idioma (Opcional) <input id="rLang" type="text" placeholder="Español"></label>
+        <label>Notas (Opcional) <input id="rNotes" type="text" placeholder="Versión, tono, algo que deba saber el admin…"></label>
       </div>
       <button id="reqBtn" class="btn primary">Enviar solicitud</button>
       <p id="reqMsg" class="msg"></p>
@@ -148,8 +162,14 @@
       <h2>⚙️ Admin: vídeos locales y solicitudes</h2>
       <p class="small">Solo el admin ve esta pestaña. Los vídeos se <strong>enlazan</strong> desde archivos locales del servidor (ruta en disco); nunca se suben ni se copian.</p>
       <h3>Registrar vídeo local</h3>
+      <p class="small">Escribe la ruta completa del archivo en la PC donde corre el servidor, sin comillas. Si copias la ruta desde el Explorador con "Copiar como ruta de acceso", la app quita las comillas sola.</p>
       <div class="formgrid">
         <label>Ruta local en el servidor * <input id="lPath" type="text" placeholder="Ej. C:\Karaoke\videos\mi-cancion.mp4 o /home/usuario/karaoke/mi-cancion.mp4"></label>
+        <label>Carpeta en el servidor <input id="lBrowseDir" type="text" placeholder="Ej. C:\Karaoke\videos"></label>
+      </div>
+      <button id="browseBtn" class="btn">📂 Explorar carpeta</button>
+      <div id="browseList" class="browse-list"></div>
+      <div class="formgrid">
         <label>Título * <input id="lTitle" type="text"></label>
         <label>Artista <input id="lArtist" type="text"></label>
         <label>Género <input id="lGenre" type="text"></label>
@@ -163,6 +183,23 @@
       </div>
       <button id="addLocalBtn" class="btn primary">Registrar vídeo local</button>
       <p id="localMsg" class="msg"></p>
+      <h3>Sala</h3>
+      <p class="small">El código de la sala no cambia al editarla. Si eliminas la sala se crea una nueva con código nuevo, la cola se vacía y el repertorio se conserva.</p>
+      <div class="formgrid">
+        <label>Nombre de la sala <input id="roomNameInput" type="text"></label>
+        <label>Contraseña nueva para entrar (vacía = no cambiar) <input id="roomPassInput" type="password" autocomplete="off" placeholder="Mínimo 4 caracteres"></label>
+        <label class="check"><input id="roomPassClear" type="checkbox"> Quitar la contraseña de la sala</label>
+      </div>
+      <button id="saveRoomBtn" class="btn">Guardar sala</button>
+      <button id="deleteRoomBtn" class="btn">🗑 Eliminar sala</button>
+      <p id="roomMsg" class="msg"></p>
+      <h3>Cambiar contraseña de admin</h3>
+      <div class="formgrid">
+        <label>Contraseña actual * <input id="adminCurPass" type="password" autocomplete="current-password"></label>
+        <label>Contraseña nueva * <input id="adminNewPass" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></label>
+      </div>
+      <button id="changePassBtn" class="btn">Cambiar contraseña</button>
+      <p id="passMsg" class="msg"></p>
       <h3>Solicitudes de generación</h3>
       <div id="adminReqList"></div>
     </section>
