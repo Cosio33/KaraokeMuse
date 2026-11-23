@@ -113,6 +113,11 @@ en `./data/karaokemuse.sqlite`. **Abre la base existente sin
 migración**: puedes arrancar el binario Rust sobre los datos que
 ya creó el servidor Node.
 
+El binario publicado es suelto: basta con ponerlo junto a la carpeta
+`public/` del repo (y deja que cree `data/` a su lado) y ejecutarlo; no
+hacen falta variables de entorno. Al arrancar imprime en la terminal
+`[karaokemuse] Servidor en http://localhost:<puerto>`.
+
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `PORT` | `8080` | Puerto del servidor |

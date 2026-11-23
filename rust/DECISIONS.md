@@ -393,3 +393,20 @@ y NO necesita Node ni el código Node presente. El servidor Node
 decida el cutover (no se borra). `record-server.sh` y
 `seed-record-db.mjs` quedan como artefactos históricos de la
 grabación; el reseteo vivo es el de Rust.
+
+## ADR-019: `ROOT` en tiempo de ejecución + mensaje al arrancar
+Status: accepted (2026-11-23)
+Context: el binario publicado no arrancaba bien fuera del repo: `ROOT` era
+una constante de compilación (`CARGO_MANIFEST_DIR/../..`) que apuntaba a
+la ruta del servidor de CI, inexistente en la máquina del usuario, así que
+`public/` no se encontraba y `GET /` daba 404 aunque el servidor estaba
+vivo. Además el binario no imprimía nada al arrancar y la terminal quedaba
+en negro, igual que si no hubiera arrancado.
+Decision: `ROOT` se resuelve en tiempo de ejecución (`runtime_root()` en
+`main.rs` y en `units/karaoke_routes.rs`): primera carpeta con `public/`
+entre la carpeta del ejecutable, la carpeta actual y, por último, la raíz
+de compilación. `KARAOKE_PUBLIC_DIR` y `DATA_DIR` siguen teniendo prioridad
+cuando están fijadas. Al arrancar, el binario imprime en stderr
+`[karaokemuse] Servidor en http://localhost:<puerto>`, como la v1 Node.
+Consequences: el binario suelto funciona con `public/` a su lado, sin
+variables; el replay y los tests no cambian (usan las variables).

@@ -19,19 +19,46 @@ use std::path::PathBuf;
 use axum::extract::Request;
 use axum::response::Response;
 
-/// Raíz del repo (el `ROOT` de `server/index.js`).
-const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+/// Raíz en tiempo de compilación (último recurso): el `ROOT` de
+/// `server/index.js`. NUNCA usarla directamente: en el binario
+/// publicado apunta a la ruta del servidor de CI, que no existe en
+/// la máquina del usuario (ADR-019).
+const COMPILE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// `DATA_DIR` si está fijada, si no `<ROOT>/data`, como `index.js`
+/// Carpeta que contiene el ejecutable, si se puede saber.
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(|p| p.to_path_buf())
+}
+
+/// Raíz del proyecto en tiempo de ejecución: la primera carpeta que
+/// contenga `public/`, buscando junto al ejecutable, en la carpeta
+/// actual, y por último en la raíz de compilación. Así el binario
+/// suelto funciona con `public/` a su lado, sin variables de entorno.
+fn runtime_root() -> PathBuf {
+    for b in [exe_dir(), std::env::current_dir().ok()]
+        .into_iter()
+        .flatten()
+    {
+        if b.join("public").is_dir() {
+            return b;
+        }
+    }
+    PathBuf::from(COMPILE_ROOT)
+}
+
+/// `DATA_DIR` si está fijada, si no `<raíz>/data`, como `index.js`
 /// (`path.join(ROOT, 'data')`).
 fn data_dir() -> String {
     std::env::var("DATA_DIR")
         .ok()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("{ROOT}/data"))
+        .unwrap_or_else(|| runtime_root().join("data").to_string_lossy().into_owned())
 }
 
-/// `<ROOT>/public`, como `index.js`, salvo `KARAOKE_PUBLIC_DIR`
+/// `<raíz>/public`, como `index.js`, salvo `KARAOKE_PUBLIC_DIR`
 /// (solo para replay/lift: el binario del stage del lift se compila
 /// con `ROOT` temporal y sin `public/`; con la variable se sirve el
 /// `public/` real. Ver ADR-018).
@@ -41,7 +68,7 @@ fn public_dir() -> PathBuf {
     {
         return PathBuf::from(d);
     }
-    PathBuf::from(ROOT).join("public")
+    runtime_root().join("public")
 }
 
 /// Inicializa el estado de `karaoke-routes` (BD + sala + cliente

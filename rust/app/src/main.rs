@@ -19,19 +19,46 @@ use karaoke_auth as _;
 use karaoke_db as _;
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Raíz del repo (el `ROOT` de `server/index.js`).
-const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+/// Raíz en tiempo de compilación (último recurso): el `ROOT` de
+/// `server/index.js`. NUNCA usarla directamente: en el binario
+/// publicado apunta a la ruta del servidor de CI, que no existe en
+/// la máquina del usuario (ADR-019).
+const COMPILE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// `DATA_DIR` si está fijada, si no `<ROOT>/data`, como `index.js`.
+/// Carpeta que contiene el ejecutable, si se puede saber.
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(|p| p.to_path_buf())
+}
+
+/// Raíz del proyecto en tiempo de ejecución: la primera carpeta que
+/// contenga `public/`, buscando junto al ejecutable, en la carpeta
+/// actual, y por último en la raíz de compilación. Así el binario
+/// suelto funciona con `public/` a su lado, sin variables de entorno.
+fn runtime_root() -> PathBuf {
+    for b in [exe_dir(), std::env::current_dir().ok()]
+        .into_iter()
+        .flatten()
+    {
+        if b.join("public").is_dir() {
+            return b;
+        }
+    }
+    PathBuf::from(COMPILE_ROOT)
+}
+
+/// `DATA_DIR` si está fijada, si no `<raíz>/data`, como `index.js`.
 /// Espejo de `units::karaoke_routes::data_dir`: aquí hace falta antes
 /// de servir, para el reseteo de la BD de pruebas.
 fn data_dir() -> String {
     std::env::var("DATA_DIR")
         .ok()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("{ROOT}/data"))
+        .unwrap_or_else(|| runtime_root().join("data").to_string_lossy().into_owned())
 }
 
 /// Ctrl-C o SIGTERM: dejar de aceptar requests y terminar las abiertas.
@@ -84,6 +111,17 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(host, port))
         .await
         .expect("binding the port");
+    // La versión Node imprimía la dirección al arrancar; la de Rust
+    // no decía nada y la terminal quedaba en negro (ADR-019).
+    eprintln!(
+        "[karaokemuse] Servidor en http://{}:{}",
+        if host.is_unspecified() {
+            "localhost".to_string()
+        } else {
+            host.to_string()
+        },
+        port
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
