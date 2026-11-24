@@ -417,6 +417,70 @@ async fn songs_accept_youtu_be_links() {
     );
 }
 
+// ADR-025: importar listas es solo para el admin y solo acepta
+// páginas de lista (`/playlist?list=`). La lectura real de YouTube
+// no se prueba aquí (red en vivo); se verifica con el servidor
+// standalone y el parseo puro tiene sus propios tests unitarios.
+#[tokio::test]
+async fn playlists_import_guards() {
+    let dir = test_dir("playlist-guards");
+    let state = state_for(&dir);
+    let guest = guest_token(&state).await;
+    let admin = admin_token(&state).await;
+    let list_url = "https://www.youtube.com/playlist?list=PLusOJN4fPK_u0dMxl_xRCTNT1GKaM6vtU";
+
+    // Invitado → 403 (las listas son exclusivas del admin).
+    let (status, _) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/playlists/import",
+            Some(&guest),
+            json!({"url": list_url}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Un vídeo con &list= no es una lista → 400.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/playlists/import",
+            Some(&admin),
+            json!({"url": "https://www.youtube.com/watch?v=elOen9IhAL4&list=RDelOen9IhAL4"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("una lista de YouTube")
+    );
+
+    // Una mezcla automática (RD…) se rechaza con mensaje claro.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/playlists/import",
+            Some(&admin),
+            json!({"url": "https://www.youtube.com/playlist?list=RDelOen9IhAL4"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("mezclas automáticas")
+    );
+}
+
 #[tokio::test]
 async fn queue_next_and_player() {
     let dir = test_dir("queue");

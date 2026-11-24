@@ -164,6 +164,21 @@ pida. Si el puerto 8080 está ocupado, arranca con `PORT=8081` (en CMD:
   reproducción de Spotify es solo para escuchar y que el karaoke con
   letra sincronizada es para vídeos locales.
 
+### Novedades (ADR-025)
+
+- **Avance automático:** en pantalla completa, al terminar una canción
+  pasa sola a la siguiente (solo en la pantalla del admin). Usa el
+  botón "⛶ Pantalla completa" del Player: si se pone en pantalla
+  completa el vídeo con su propio botón, al cambiar de canción se
+  saldría de pantalla completa.
+- **Listas de YouTube (solo admin):** pega el enlace de una lista
+  (`youtube.com/playlist?list=…`) en Biblioteca y usa "📋 Importar
+  lista completa" para agregar todos sus vídeos de una vez (hasta 100,
+  sin repetir los que ya están). Las mezclas automáticas (`list=RD…`)
+  no se pueden importar. Si un invitado pega una lista, se le pide que
+  la solicite en la pestaña Pedir video, y el admin la importa desde
+  esa petición.
+
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `PORT` | `8080` | Puerto del servidor |

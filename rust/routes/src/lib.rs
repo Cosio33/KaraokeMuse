@@ -12,6 +12,7 @@ pub mod handlers;
 pub mod http_util;
 pub mod json;
 pub mod metadata;
+pub mod playlist;
 pub mod port;
 pub mod validate;
 

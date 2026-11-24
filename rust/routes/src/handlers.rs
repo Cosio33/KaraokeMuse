@@ -35,6 +35,7 @@ use crate::json::{
     write_json,
 };
 use crate::metadata::{Metadata, fetch_metadata};
+use crate::playlist::{fetch_playlist, is_playlist_url, playlist_id_from_url};
 use crate::validate::validate_song_input;
 
 /// `Err(String)` → 500 `{error:'Error interno del servidor.'}` (el
@@ -307,6 +308,11 @@ pub async fn handle(state: &AppState, ctx: Ctx) -> RResult {
         });
     }
 
+    // Importar una lista completa de YouTube (ADR-025, solo admin).
+    if p == "/api/playlists/import" && method == Method::POST {
+        return playlists_import(state, ctx).await;
+    }
+
     // Biblioteca
     if p == "/api/songs" && method == Method::GET {
         return songs_list(state, &ctx);
@@ -553,6 +559,84 @@ fn songs_random(state: &AppState, ctx: &Ctx) -> RResult {
     };
     let songs: Vec<Value> = rows.iter().map(song_out).collect();
     Ok(json_response(200, &json!({ "songs": songs })))
+}
+
+/// Importar una lista completa de YouTube (ADR-025, solo admin).
+/// Lee la página pública de la lista, registra cada vídeo como
+/// canción de YouTube y salta los que ya están en el repertorio.
+async fn playlists_import(state: &AppState, ctx: Ctx) -> RResult {
+    let user = match need_admin(state, &ctx.headers)? {
+        Ok(u) => u,
+        Err(r) => return Ok(r),
+    };
+    let b = read_body(ctx.body).await?;
+    let url = js_trim(&js_string_or_empty(field(&b, "url"))).to_string();
+    if !is_playlist_url(&url) {
+        return Ok(err_json(
+            400,
+            "Pega el enlace de una lista de YouTube (youtube.com/playlist?list=…). Un vídeo con &list= es un solo vídeo, no una lista.",
+        ));
+    }
+    let Some(list_id) = playlist_id_from_url(&url) else {
+        return Ok(err_json(
+            400,
+            "No se encontró el parámetro list= en el enlace.",
+        ));
+    };
+    if list_id.starts_with("RD") {
+        return Ok(err_json(
+            400,
+            "Las mezclas automáticas de YouTube (listas RD…) no se pueden importar; usa una lista creada por un usuario.",
+        ));
+    }
+    let playlist = match fetch_playlist(&state.client, &list_id).await {
+        Ok(p) => p,
+        Err(e) => return Ok(err_json(400, &e)),
+    };
+    let now = now_iso();
+    let (mut added, mut skipped) = (0, 0);
+    {
+        let db = lock_db(state);
+        let existing: Vec<Value> =
+            query_all(&db.conn, "SELECT url FROM songs", rusqlite::params![])
+                .map_err(|e| e.to_string())?;
+        for v in &playlist.videos {
+            if existing.iter().any(|row| {
+                row.get("url")
+                    .and_then(|u| u.as_str())
+                    .is_some_and(|u| u.contains(&v.video_id))
+            }) {
+                skipped += 1;
+                continue;
+            }
+            let id = new_id_str("song").map_err(|e| e.to_string())?;
+            exec_sql(
+                &db.conn,
+                "INSERT INTO songs (id, title, artist, platform, url, local_path, thumbnail_url, genre, language, difficulty, status, rating, is_favorite, notes, lyrics_text, owner_user_id, created_at, updated_at) VALUES (?1, ?2, ?3, 'youtube', ?4, '', ?5, '', '', 'media', 'want', 0, 0, '', '', ?6, ?7, ?7)",
+                vec![
+                    rusqlite::types::Value::Text(id),
+                    rusqlite::types::Value::Text(v.title.clone()),
+                    rusqlite::types::Value::Text(v.artist.clone()),
+                    rusqlite::types::Value::Text(format!(
+                        "https://www.youtube.com/watch?v={}",
+                        v.video_id
+                    )),
+                    rusqlite::types::Value::Text(format!(
+                        "https://i.ytimg.com/vi/{}/hqdefault.jpg",
+                        v.video_id
+                    )),
+                    rusqlite::types::Value::Text(user.id.clone()),
+                    rusqlite::types::Value::Text(now.clone()),
+                ],
+            )?;
+            added += 1;
+        }
+    }
+    Ok(json_response(
+        200,
+        &json!({"ok": true, "playlist_title": playlist.title,
+                "added": added, "skipped": skipped, "total": playlist.videos.len()}),
+    ))
 }
 
 async fn songs_create(state: &AppState, ctx: Ctx) -> RResult {

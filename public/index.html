@@ -93,7 +93,9 @@
       </div>
       <button id="addSongBtn" class="btn primary">Agregar canción</button>
       <button id="cancelEditBtn" class="btn small hidden">Cancelar edición</button>
+      <button id="importListBtn" class="btn hidden">📋 Importar lista completa (admin)</button>
       <p id="addMsg" class="msg"></p>
+      <p id="importMsg" class="msg"></p>
       <p class="small">Los invitados solo pueden agregar enlaces. Los vídeos locales solo los registra el admin en la pestaña Admin.</p>
 
       <h2>Mi repertorio</h2>
@@ -121,12 +123,13 @@
 
     <section id="tab-player" class="tabpane card hidden">
       <h2>Player</h2>
-      <p class="small">Pantalla completa en el dispositivo del anfitrión. YouTube y Spotify usan su reproductor oficial embebido; los vídeos locales se reproducen desde el disco del servidor.</p>
+      <p class="small">Pantalla completa en el dispositivo del anfitrión. YouTube y Spotify usan su reproductor oficial embebido; los vídeos locales se reproducen desde el disco del servidor. En pantalla completa, al terminar una canción pasa sola a la siguiente (solo en la pantalla del admin).</p>
       <div id="playerBox" class="playerbox"><p>Aún no hay canción sonando. Pide la siguiente desde la Cola.</p></div>
       <div class="player-controls">
         <button id="prevBtn" class="btn">⏮ Anterior</button>
         <button id="pauseBtn" class="btn">⏸ Pausa</button>
         <button id="playerNextBtn" class="btn primary">⏭ Siguiente</button>
+        <button id="fsBtn" class="btn">⛶ Pantalla completa</button>
         <a class="btn" href="https://accounts.spotify.com/login" target="_blank" rel="noopener">🎧 Iniciar sesión en Spotify</a>
       </div>
       <p id="playerMsg" class="msg"></p>
@@ -143,7 +146,7 @@
 
     <section id="tab-requests" class="tabpane card hidden">
       <h2>✨ Pide un vídeo karaoke</h2>
-      <p class="small">Pide una canción que no esté en YouTube y el administrador la subirá.</p>
+      <p class="small">Pide una canción que no esté en YouTube y el administrador la subirá. Si es una lista de YouTube, el admin la importará completa.</p>
       <div class="formgrid">
         <label>Enlace del vídeo original * <input id="rUrl" type="url" placeholder="https://www.youtube.com/watch?v=…"></label>
         <label>Nombre de la canción * <input id="rTitle" type="text"></label>

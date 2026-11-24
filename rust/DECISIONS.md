@@ -580,3 +580,45 @@ igual que los completos, y las canciones de Spotify muestran su letra
 tiene la letra o está caído, solo se ve la leyenda; y la letra nunca
 va sincronizada con la música en Spotify, porque el embed no dice en
 qué segundo va la canción.
+
+## ADR-025: Avance automático en pantalla completa y listas de YouTube (2026-11-24)
+Status: accepted (2026-11-24)
+Context: (1) En modo fiesta, al terminar una canción había que pulsar
+Siguiente a mano. (2) El admin quería agregar listas completas de
+YouTube; YouTube no tiene oEmbed para listas y los invitados no deben
+poder meter listas enteras en el repertorio.
+Decision: (1) Avance automático solo en pantalla completa y solo en
+la pantalla del admin (la cola solo la avanza el admin; en la de un
+invitado la canción simplemente termina). Botón "⛶ Pantalla
+completa" en el Player que pone en pantalla completa toda la pestaña
+Player — así el avance no saca de pantalla completa al cambiar de
+canción (con el botón propio del vídeo, el elemento que está en
+pantalla completa se destruye al cargar la siguiente y se saldría).
+Fin de canción: vídeo local por el evento `ended`; YouTube por la
+API oficial de YouTube (`iframe_api`, `onStateChange` ENDED); Spotify
+por la API oficial de Spotify (`embed/iframe-api/v1`,
+`playback_update` con `position >= duration - 1500 ms`). Solo se
+escucha: nunca se llama a `play()` del controlador de Spotify,
+porque eso fuerza la muestra de 30 s incluso con Premium (ADR-023).
+Si una API no carga (sin red para el script), se usa el embed simple
+de antes y ese origen no avanza solo. (2) Nuevo endpoint
+`POST /api/playlists/import` (solo admin): lee la página pública de
+la lista (`ytInitialData`, `lockupViewModel` en la página actual y
+`playlistVideoRenderer` en la vieja, como mucho 100 vídeos, sin
+duplicados) y registra cada vídeo como canción de YouTube, saltando
+los que ya están en el repertorio. Un `watch?v=…&list=…` sigue siendo
+un solo vídeo; las mezclas automáticas (`list=RD…`) se rechazan con
+mensaje claro. En Biblioteca, si el enlace es una lista, el invitado
+ve "Solicita la lista en la pestaña Pedir video" y el admin ve el
+botón "📋 Importar lista completa"; en Pedir video el invitado puede
+pedir la lista y el admin la importa desde la petición con un botón.
+`CACHE_NAME` del service worker sube a `karaokemuse-v4` (cambió
+`public/`).
+Consequences: en pantalla completa la fiesta sigue sola de canción
+en canción; las listas se agregan de una vez. Límites honestos: el
+avance de Spotify depende de que el embed reporte su posición (la
+API lo documenta, pero no se pudo probar con una canción real en la
+VM); si el navegador bloquea la reproducción automática con sonido,
+la siguiente canción puede pedir un toque en ▶. YouTube puede
+cambiar la estructura de su página y entonces la importación
+fallaría con el mensaje de "no se pudo leer la lista".

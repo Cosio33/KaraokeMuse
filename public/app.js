@@ -37,6 +37,21 @@ function embedUrl(song) {
 }
 function platformLabel(p) { return p === 'youtube' ? '▶️ YouTube' : p === 'spotify' ? '🎧 Spotify' : '💾 Vídeo local'; }
 
+// URL de una lista de YouTube (/playlist?list=…) → su id, o null.
+// Un watch?v=…&list=… es un solo vídeo con lista, no una lista.
+function playlistIdFromUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (!/(?:www\.|music\.)?youtube\.com$/i.test(u.hostname)) return null;
+    if (u.pathname !== '/playlist') return null;
+    return u.searchParams.get('list') || null;
+  } catch (e) { return null; }
+}
+function spotifyUri(song) {
+  const m = String(song.url || '').match(/open\.spotify\.com\/(?:(?:intl-[a-z]{2}|[a-z]{2}(?:-[a-z]{2})?)\/)?(track|album|playlist|episode)\/([\w]+)/);
+  return m ? `spotify:${m[1]}:${m[2]}` : null;
+}
+
 function showApp() {
   $('authView').classList.add('hidden');
   $('appView').classList.remove('hidden');
@@ -160,21 +175,122 @@ window.removeQueue = async (id) => {
 
 let currentSong = null;
 let ytPaused = false;
+let ytPlayer = null;
+let spotifyController = null;
+let spotifyEndedFired = false;
+let playerSeq = 0;
+
+function isPlayerFullscreen() {
+  const fs = document.fullscreenElement;
+  return !!(fs && $('tab-player').contains(fs));
+}
+// Avance automático (ADR-025): solo en pantalla completa y solo en
+// la pantalla del admin (la cola solo la avanza el admin).
+function maybeAutoAdvance() {
+  if (me && me.role === 'admin' && isPlayerFullscreen()) nextSong();
+}
+function destroyPlayers() {
+  if (ytPlayer) { try { ytPlayer.destroy(); } catch (e) {} ytPlayer = null; }
+  if (spotifyController) { try { spotifyController.destroy(); } catch (e) {} spotifyController = null; }
+  spotifyEndedFired = false;
+  ytPaused = false;
+}
+// Carga perezosa de la API de YouTube (para el evento de fin de vídeo).
+let ytApiPromise = null;
+function ytApiReady() {
+  if (window.YT && window.YT.Player) return Promise.resolve(true);
+  if (!ytApiPromise) {
+    ytApiPromise = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 8000);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); clearTimeout(timer); resolve(true); };
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.onerror = () => { clearTimeout(timer); resolve(false); };
+      document.head.appendChild(tag);
+    });
+  }
+  return ytApiPromise;
+}
+// Carga perezosa de la API de Spotify (para saber cuándo termina la
+// canción: el embed normal no avisa). Solo se escucha: nunca se llama
+// a play() del controlador, porque eso fuerza la muestra de 30 s
+// incluso con Premium (ver ADR-023).
+let spotifyApiPromise = null;
+let spotifyApi = null;
+function spotifyApiReady() {
+  if (spotifyApi) return Promise.resolve(true);
+  if (!spotifyApiPromise) {
+    spotifyApiPromise = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 8000);
+      window.onSpotifyIframeApiReady = (IFrameAPI) => { spotifyApi = IFrameAPI; clearTimeout(timer); resolve(true); };
+      const tag = document.createElement('script');
+      tag.src = 'https://open.spotify.com/embed/iframe-api/v1';
+      tag.onerror = () => { clearTimeout(timer); resolve(false); };
+      document.head.appendChild(tag);
+    });
+  }
+  return spotifyApiPromise;
+}
 async function loadPlayer() {
   const d = await api('/api/player');
   const box = $('playerBox');
   currentSong = d.song;
-  ytPaused = false;
+  const mySeq = ++playerSeq;
+  destroyPlayers();
   const pauseBtn = $('pauseBtn');
   if (pauseBtn) pauseBtn.textContent = '⏸ Pausa';
   if (!d.song) { box.innerHTML = '<p>Aún no hay canción sonando. Pide la siguiente desde la Cola.</p>'; $('lyricsBox').classList.add('hidden'); return; }
   const s = d.song;
-  box.innerHTML = `<h3>${esc(s.title)} — ${esc(s.artist || '')}</h3>` + (
-    s.platform === 'local'
-      ? `<video src="/api/media/local/${s.id}?token=${encodeURIComponent(token)}" controls autoplay></video>`
-      : embedUrl(s)
-        ? `<iframe data-platform="${esc(s.platform)}" src="${esc(embedUrl(s))}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
-        : `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">Abrir en ${esc(s.platform)}</a> (no se pudo embeber este enlace).</p>`);
+  box.innerHTML = `<h3>${esc(s.title)} — ${esc(s.artist || '')}</h3>`;
+  if (s.platform === 'local') {
+    box.innerHTML += `<video src="/api/media/local/${s.id}?token=${encodeURIComponent(token)}" controls autoplay></video>`;
+    const v = box.querySelector('video');
+    if (v) v.addEventListener('ended', maybeAutoAdvance);
+  } else if (s.platform === 'youtube') {
+    const id = youtubeId(s.url);
+    if (!id) {
+      box.innerHTML += `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">Abrir en YouTube</a> (no se pudo embeber este enlace).</p>`;
+    } else if (await ytApiReady()) {
+      if (mySeq !== playerSeq) return;
+      box.innerHTML += '<div id="ytPlayer"></div>';
+      ytPlayer = new YT.Player('ytPlayer', {
+        videoId: id,
+        width: '100%',
+        height: '100%',
+        playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+        events: { onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) maybeAutoAdvance(); } },
+      });
+    } else {
+      // Sin la API de YouTube (sin red para el script): embed simple
+      // como antes; en este caso no hay avance automático.
+      if (mySeq !== playerSeq) return;
+      box.innerHTML += `<iframe data-platform="youtube" src="${esc(embedUrl(s))}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+    }
+  } else if (s.platform === 'spotify') {
+    const uri = spotifyUri(s);
+    if (!uri) {
+      box.innerHTML += `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">Abrir en Spotify</a> (no se pudo embeber este enlace).</p>`;
+    } else if (await spotifyApiReady()) {
+      if (mySeq !== playerSeq) return;
+      box.innerHTML += '<div id="spPlayer"></div>';
+      spotifyApi.createController(document.getElementById('spPlayer'), { uri, width: '100%', height: 352 }, (controller) => {
+        if (mySeq !== playerSeq) { try { controller.destroy(); } catch (e) {} return; }
+        spotifyController = controller;
+        controller.addListener('playback_update', (e) => {
+          const p = e && e.data;
+          if (!p || !p.duration || p.duration <= 0) return;
+          if (!spotifyEndedFired && p.position >= p.duration - 1500) {
+            spotifyEndedFired = true;
+            maybeAutoAdvance();
+          }
+        });
+      });
+    } else {
+      if (mySeq !== playerSeq) return;
+      box.innerHTML += `<iframe data-platform="spotify" src="${esc(embedUrl(s))}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+    }
+  }
   if (s.lyrics_text) {
     $('lyricsBox').classList.remove('hidden');
     $('lyricsText').textContent = s.lyrics_text;
@@ -252,15 +368,20 @@ $('prevBtn').addEventListener('click', async () => {
   } catch (e) { $('playerMsg').textContent = e.message; }
 });
 $('pauseBtn').addEventListener('click', () => {
+  const btn = $('pauseBtn');
+  if (ytPlayer) {
+    if (ytPaused) { ytPlayer.playVideo(); ytPaused = false; btn.textContent = '⏸ Pausa'; }
+    else { ytPlayer.pauseVideo(); ytPaused = true; btn.textContent = '▶️ Seguir'; }
+    return;
+  }
   const video = document.querySelector('#playerBox video');
   const frame = document.querySelector('#playerBox iframe');
-  const btn = $('pauseBtn');
   if (video) {
     if (video.paused) video.play(); else video.pause();
     btn.textContent = video.paused ? '▶️ Seguir' : '⏸ Pausa';
     return;
   }
-  if (frame && frame.dataset.platform === 'youtube') {
+  if (frame && currentSong && currentSong.platform === 'youtube') {
     frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: ytPaused ? 'play' : 'pause', args: '' }), '*');
     ytPaused = !ytPaused;
     btn.textContent = ytPaused ? '▶️ Seguir' : '⏸ Pausa';
@@ -273,6 +394,20 @@ $('pauseBtn').addEventListener('click', () => {
   $('playerMsg').textContent = 'No hay nada sonando.';
 });
 $('playerNextBtn').addEventListener('click', nextSong);
+
+// Pantalla completa del Player (ADR-025): a pantalla completa va
+// toda la pestaña, así el avance automático sigue de canción en
+// canción sin salirse de pantalla completa.
+$('fsBtn').addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await $('tab-player').requestFullscreen();
+  } catch (e) { $('playerMsg').textContent = 'No se pudo entrar a pantalla completa en este navegador.'; }
+});
+document.addEventListener('fullscreenchange', () => {
+  const b = $('fsBtn');
+  if (b) b.textContent = document.fullscreenElement ? '⛶ Salir de pantalla completa' : '⛶ Pantalla completa';
+});
 
 async function shuffleSing() {
   try {
@@ -308,12 +443,21 @@ async function loadAdminRequests() {
         <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>En proceso</option>
         <option value="done" ${r.status === 'done' ? 'selected' : ''}>Hecho</option></select></label>
       <label>Nota del admin <input value="${esc(r.admin_note || '')}" onchange="setReqNote('${r.id}', this.value)"></label>
+      ${playlistIdFromUrl(r.video_url) ? `<button class="btn small" onclick="importRequestList('${r.id}', '${esc(r.video_url)}')">📋 Importar lista</button>` : ''}
       </div></div>`).join('')
       : '<p>No hay solicitudes.</p>';
   } catch (e) { $('adminReqList').innerHTML = `<p>${esc(e.message)}</p>`; }
 }
 window.setReqStatus = async (id, status) => { try { await api(`/api/requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); } catch (e) { alert(e.message); } };
 window.setReqNote = async (id, note) => { try { await api(`/api/requests/${id}`, { method: 'PATCH', body: JSON.stringify({ admin_note: note }) }); } catch (e) { alert(e.message); } };
+// Importar la lista que pidió un invitado (ADR-025).
+window.importRequestList = async (id, url) => {
+  try {
+    const d = await api('/api/playlists/import', { method: 'POST', body: JSON.stringify({ url }) });
+    alert(`Lista «${d.playlist_title || 'YouTube'}»: ${d.added} agregadas${d.skipped ? ` (${d.skipped} ya estaban)` : ''}.`);
+    await loadAdminRequests(); await loadSongs();
+  } catch (e) { alert(e.message); }
+};
 
 // Auth
 $('joinBtn').addEventListener('click', async () => {
@@ -409,6 +553,14 @@ $('bulkDeleteBtn').addEventListener('click', async () => {
 $('detectBtn').addEventListener('click', async () => {
   const url = $('sUrl').value.trim();
   if (!url) { $('detectMsg').textContent = 'Pega primero el enlace.'; return; }
+  // ADR-025: una lista no es una canción; no se detecta por oEmbed.
+  if (playlistIdFromUrl(url)) {
+    $('detectMsg').textContent = me && me.role === 'admin'
+      ? 'Es una lista de YouTube: usa «Importar lista completa» para agregar todos sus vídeos.'
+      : 'Solicita la lista en la pestaña Pedir video';
+    updateImportBtn();
+    return;
+  }
   $('detectMsg').textContent = 'Buscando metadatos…';
   try {
     const d = await api(`/api/metadata?url=${encodeURIComponent(url)}`);
@@ -420,6 +572,13 @@ $('detectBtn').addEventListener('click', async () => {
   } catch (e) { $('detectMsg').textContent = e.message; }
 });
 $('addSongBtn').addEventListener('click', async () => {
+  // ADR-025: una lista no se agrega como canción.
+  if (playlistIdFromUrl($('sUrl').value)) {
+    $('addMsg').textContent = me && me.role === 'admin'
+      ? 'Esa URL es una lista: usa «Importar lista completa».'
+      : 'Solicita la lista en la pestaña Pedir video';
+    return;
+  }
   const platform = editingPlatform || $('addSongBtn').dataset.platform || (/spotify/.test($('sUrl').value) ? 'spotify' : 'youtube');
   const body = {
     title: $('sTitle').value, artist: $('sArtist').value, platform,
@@ -444,6 +603,25 @@ $('addSongBtn').addEventListener('click', async () => {
     delete $('addSongBtn').dataset.thumb; delete $('addSongBtn').dataset.platform;
     await loadSongs();
   } catch (e) { $('addMsg').textContent = e.message; }
+});
+
+// Importar una lista completa de YouTube (ADR-025, solo admin).
+function updateImportBtn() {
+  const show = !!(me && me.role === 'admin' && playlistIdFromUrl($('sUrl').value.trim()) && !editingId);
+  $('importListBtn').classList.toggle('hidden', !show);
+  if (!show) $('importMsg').textContent = '';
+}
+$('sUrl').addEventListener('input', updateImportBtn);
+$('importListBtn').addEventListener('click', async () => {
+  const url = $('sUrl').value.trim();
+  $('importMsg').textContent = 'Importando lista…';
+  try {
+    const d = await api('/api/playlists/import', { method: 'POST', body: JSON.stringify({ url }) });
+    $('importMsg').textContent = `Lista «${d.playlist_title || 'YouTube'}»: ${d.added} agregadas${d.skipped ? ` (${d.skipped} ya estaban en el repertorio)` : ''}.`;
+    $('sUrl').value = '';
+    updateImportBtn();
+    await loadSongs();
+  } catch (e) { $('importMsg').textContent = e.message; }
 });
 
 // Cola: siguiente (admin)

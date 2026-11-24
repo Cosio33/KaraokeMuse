@@ -9,7 +9,7 @@
 // estén los nuevos: eso dejó la app rota en 2026-11-24 (index.html nuevo
 // sin el campo Notas + app.js viejo que lo leía → "Cannot read properties
 // of null (reading 'value')" al agregar enlaces, y sin ?token= ni intl-es).
-const CACHE_NAME = 'karaokemuse-v3';
+const CACHE_NAME = 'karaokemuse-v4';
 const PRECACHE = [
   '/',
   '/index.html',
