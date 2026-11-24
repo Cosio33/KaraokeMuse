@@ -1683,10 +1683,16 @@ async fn serve_static(state: &AppState, path: &str) -> RResult {
         .await
         .map_err(|e| e.to_string())?;
     let stream = file_stream(f, meta.len());
-    Response::builder()
+    let mut res = Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, mime)
-        .body(Body::from_stream(stream))
+        .header(header::CONTENT_TYPE, mime);
+    // El service worker solo se actualiza si el navegador vuelve a pedir
+    // /sw.js y ve que cambió: sin este header el navegador puede servirlo
+    // de su caché HTTP y no enterarse nunca del cambio de versión.
+    if rel == "sw.js" {
+        res = res.header(header::CACHE_CONTROL, "no-cache");
+    }
+    res.body(Body::from_stream(stream))
         .map_err(|e| e.to_string())
 }
 

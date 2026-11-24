@@ -492,3 +492,28 @@ tuviera clonado el `main` anterior lo conserva en local, y en GitHub
 sigue disponible como `node-v1`. La CI de Rust corre en cada push a
 `main`. No se hace release v2.0.0 en este cambio (pendiente de
 decisión del usuario).
+
+## ADR-022: Caché del service worker congelada servía app.js viejo (2026-11-24)
+Status: accepted (2026-11-24)
+Context: el usuario probó las mejoras de ADR-020 y reportó tres
+síntomas a la vez: error "Cannot read properties of null (reading
+'value')" al agregar enlaces de YouTube/Spotify, y la reproducción
+local y de Spotify seguía fallando. Causa única: el service worker
+cacheaba los estáticos con caché primero (`CACHE_NAME =
+'karaokemuse-v1'`, sin cambiar nunca) mientras la navegación pedía el
+HTML a la red. Al actualizar `public/` en el servidor, el navegador
+siguió sirviendo el `app.js` viejo con el `index.html` nuevo. El
+`app.js` viejo leía `$('sNotes').value` (el campo Notas que ADR-020
+quitó del formulario) dentro de un try/catch que escribe el mensaje
+bajo el botón Agregar — exactamente lo observado — y además no tenía
+ni `?token=` (local 401) ni el prefijo `intl-es` (Spotify no embebía).
+Decision: subir `CACHE_NAME` a `'karaokemuse-v2'` (y subirlo en cada
+cambio futuro de `public/`; queda anotado en `sw.js`), y servir
+`/sw.js` con `Cache-Control: no-cache` para que el navegador se entere
+del cambio de versión al navegar. El arreglo solo surte efecto cuando
+el usuario actualiza su carpeta `public/` y recarga la página (el SW
+nuevo se instala, re-cachea los archivos y borra la caché vieja).
+Consequences: el navegador ya no puede quedarse con archivos viejos
+tras una actualización del servidor. Si el error persiste tras
+recargar, hay que desregistrar el SW una vez (DevTools → Application
+→ Service Workers) o borrar los datos del sitio.

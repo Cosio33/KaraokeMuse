@@ -2,7 +2,14 @@
 // Solo cachea los archivos estáticos de la interfaz (HTML/CSS/JS/vendor/iconos).
 // NUNCA cachea la API (/api/...) ni los streams de vídeo (/api/media/...):
 // la biblioteca, la cola y el Player siempre necesitan el servidor encendido.
-const CACHE_NAME = 'karaokemuse-v1';
+//
+// IMPORTANTE: cada vez que cambie un archivo de public/, hay que subir
+// la versión de CACHE_NAME (v2, v3…). Si no, el navegador sigue sirviendo
+// los archivos viejos de la caché (caché primero) aunque en el disco ya
+// estén los nuevos: eso dejó la app rota en 2026-11-24 (index.html nuevo
+// sin el campo Notas + app.js viejo que lo leía → "Cannot read properties
+// of null (reading 'value')" al agregar enlaces, y sin ?token= ni intl-es).
+const CACHE_NAME = 'karaokemuse-v2';
 const PRECACHE = [
   '/',
   '/index.html',
