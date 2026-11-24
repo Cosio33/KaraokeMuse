@@ -517,3 +517,25 @@ Consequences: el navegador ya no puede quedarse con archivos viejos
 tras una actualización del servidor. Si el error persiste tras
 recargar, hay que desregistrar el SW una vez (DevTools → Application
 → Service Workers) o borrar los datos del sitio.
+
+## ADR-023: Botón de inicio de sesión en Spotify (2026-11-24)
+Status: accepted (2026-11-24)
+Context: con ADR-020/022 todo funcionaba, pero Spotify solo tocaba la
+muestra de 30 segundos. El reproductor embebido de Spotify lee la
+sesión del navegador (cookies de open.spotify.com): sin sesión solo da
+la muestra; con sesión Premium suena la canción completa; con cuenta
+gratis, según los límites del plan gratuito de Spotify. La app no
+puede iniciar sesión dentro del iframe (es de otro origen) ni ver la
+cuenta del usuario, y no usa OAuth ni la API de Spotify.
+Decision: un enlace en la pestaña Player a
+https://accounts.spotify.com/login (se abre en otra pestaña) con una
+nota corta: tras iniciar sesión hay que salir del Player y volver para
+que el iframe tome la sesión. El iframe ya incluye
+`allow="... encrypted-media ..."` (sin ese permiso Spotify solo da
+muestras, verificado en app.js). No se cambia el embed ni se agrega
+autoplay a Spotify: el usuario pulsa ▶ en el propio reproductor, que
+es el camino que da la canción completa.
+Consequences: el usuario inicia sesión con su propia cuenta de
+Spotify en su navegador; la app no guarda nada de Spotify. Si el
+navegador bloquea las cookies de terceros, el embed no ve la sesión y
+sigue dando solo la muestra (límite del navegador, no de la app).
