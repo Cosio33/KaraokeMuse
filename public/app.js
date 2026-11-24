@@ -175,8 +175,62 @@ async function loadPlayer() {
       : embedUrl(s)
         ? `<iframe data-platform="${esc(s.platform)}" src="${esc(embedUrl(s))}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe>`
         : `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">Abrir en ${esc(s.platform)}</a> (no se pudo embeber este enlace).</p>`);
-  if (s.lyrics_text) { $('lyricsBox').classList.remove('hidden'); $('lyricsText').textContent = s.lyrics_text; }
-  else $('lyricsBox').classList.add('hidden');
+  if (s.lyrics_text) {
+    $('lyricsBox').classList.remove('hidden');
+    $('lyricsText').textContent = s.lyrics_text;
+    $('lyricsNote').textContent = '';
+  } else if (s.platform === 'spotify') {
+    // ADR-024: el embed de Spotify no trae letra y no se puede
+    // modificar (iframe de otro origen). Se busca la letra en LRCLIB
+    // (gratis, sin clave) y se muestra sin sincronizar: el embed no
+    // comparte el tiempo de reproducción, así que no se puede
+    // resaltar la línea actual.
+    $('lyricsBox').classList.remove('hidden');
+    $('lyricsText').textContent = 'Buscando letra…';
+    $('lyricsNote').textContent = '';
+    showSpotifyLyrics(s);
+  } else $('lyricsBox').classList.add('hidden');
+}
+
+// Letra de Spotify vía LRCLIB, con caché por canción. Solo se pinta
+// si la canción que suena sigue siendo la misma (la búsqueda es
+// asíncrona y la cola puede avanzar mientras tanto).
+const spotifyLyricsCache = {};
+async function fetchSpotifyLyrics(song) {
+  const title = (song.title || '').trim();
+  const artist = (song.artist || '').trim();
+  if (!title) return { found: false };
+  try {
+    let data = null;
+    if (artist) {
+      const r = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`);
+      if (r.ok) data = await r.json();
+    }
+    if (!data || !data.plainLyrics) {
+      const r = await fetch(`https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}${artist ? `&artist_name=${encodeURIComponent(artist)}` : ''}`);
+      if (r.ok) {
+        const list = await r.json();
+        data = (list || []).find((x) => x && x.plainLyrics) || null;
+      }
+    }
+    return data && data.plainLyrics ? { found: true, text: data.plainLyrics } : { found: false };
+  } catch (e) { return { found: false }; }
+}
+async function showSpotifyLyrics(song) {
+  const songId = song.id;
+  let result = spotifyLyricsCache[songId];
+  if (!result) {
+    result = await fetchSpotifyLyrics(song);
+    spotifyLyricsCache[songId] = result;
+  }
+  if (!currentSong || currentSong.id !== songId) return;
+  if (result.found) {
+    $('lyricsText').textContent = result.text;
+    $('lyricsNote').textContent = 'Letra sin sincronizar (fuente: LRCLIB). El reproductor de Spotify no comparte el tiempo de reproducción.';
+  } else {
+    $('lyricsText').textContent = 'No se encontró la letra de esta canción.';
+    $('lyricsNote').textContent = 'La reproducción de Spotify es solo para escuchar la canción; el karaoke con letra sincronizada es para vídeos locales.';
+  }
 }
 
 // Controles del Player: anterior / pausa / siguiente (admin).

@@ -36,6 +36,19 @@ fn or_empty(v: Option<&Value>) -> Value {
     }
 }
 
+/// Plataforma de un enlace por su dominio. Ojo: `youtu.be` no
+/// contiene la cadena `youtube`, así que hay que comprobarlo aparte;
+/// sin eso, Detectar etiquetaba los enlaces cortos de YouTube como
+/// Spotify y al agregarlos el servidor respondía
+/// "url debe ser de Spotify" (ADR-024).
+pub fn detect_platform(url: &str) -> &'static str {
+    if url.contains("youtube") || url.contains("youtu.be") {
+        "youtube"
+    } else {
+        "spotify"
+    }
+}
+
 pub async fn fetch_metadata(client: &reqwest::Client, url: &str) -> Metadata {
     let endpoint = if url.contains("youtube.com") || url.contains("youtu.be") {
         format!(
@@ -82,14 +95,46 @@ pub async fn fetch_metadata(client: &reqwest::Client, url: &str) -> Metadata {
             }
         }
         Ok(j) => Metadata::Ok(Box::new(MetadataOk {
-            platform: if url.contains("youtube") {
-                "youtube"
-            } else {
-                "spotify"
-            },
+            platform: detect_platform(url),
             title: or_empty(j.get("title")),
             artist: or_empty(j.get("author_name")),
             thumbnail_url: or_empty(j.get("thumbnail_url")),
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_platform_youtu_be_is_youtube() {
+        assert_eq!(detect_platform("https://youtu.be/elOen9IhAL4"), "youtube");
+        assert_eq!(
+            detect_platform(
+                "https://www.youtube.com/watch?v=elOen9IhAL4&list=RDelOen9IhAL4&start_radio=1"
+            ),
+            "youtube"
+        );
+        assert_eq!(
+            detect_platform("https://www.youtube.com/shorts/elOen9IhAL4"),
+            "youtube"
+        );
+        assert_eq!(
+            detect_platform("https://music.youtube.com/watch?v=elOen9IhAL4"),
+            "youtube"
+        );
+    }
+
+    #[test]
+    fn detect_platform_spotify_links() {
+        assert_eq!(
+            detect_platform("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"),
+            "spotify"
+        );
+        assert_eq!(
+            detect_platform("https://open.spotify.com/intl-es/track/4uLU6hMCjMI75M1A2tKUQC"),
+            "spotify"
+        );
     }
 }

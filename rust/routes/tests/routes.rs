@@ -370,6 +370,53 @@ async fn songs_crud_and_validation() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+// ADR-024: los enlaces cortos de YouTube (youtu.be, los que comparte
+// la app de YouTube) se aceptan como YouTube; antes, Detectar los
+// etiquetaba como Spotify y agregarlos fallaba con
+// "url debe ser de Spotify".
+#[tokio::test]
+async fn songs_accept_youtu_be_links() {
+    let dir = test_dir("youtu-be");
+    let state = state_for(&dir);
+    let guest = guest_token(&state).await;
+
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/songs",
+            Some(&guest),
+            json!({"title": "No confíes en mí", "platform": "youtube",
+                   "url": "https://youtu.be/elOen9IhAL4", "artist": "Camilo séptimo"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["song"]["platform"], "youtube");
+    assert_eq!(body["song"]["url"], "https://youtu.be/elOen9IhAL4");
+
+    // La misma URL con plataforma spotify sigue rechazándose: es el
+    // error que veía el usuario cuando Detectar la etiquetaba mal.
+    let (status, body) = call(
+        &state,
+        req_json(
+            Method::POST,
+            "/api/songs",
+            Some(&guest),
+            json!({"title": "No confíes en mí", "platform": "spotify",
+                   "url": "https://youtu.be/elOen9IhAL4"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("url debe ser de Spotify")
+    );
+}
+
 #[tokio::test]
 async fn queue_next_and_player() {
     let dir = test_dir("queue");

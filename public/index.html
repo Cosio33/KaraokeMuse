@@ -75,7 +75,7 @@
       <h2>Agregar canción (enlace YouTube o Spotify)</h2>
       <p class="small">Pega el enlace, detecta el título y agrégala al repertorio. Para que suene, después márcala y agrégala a la cola (o usa el botón + Cola de cada canción).</p>
       <div class="formgrid">
-        <label>Enlace <input id="sUrl" type="url" placeholder="https://www.youtube.com/watch?v=… o https://open.spotify.com/track/…"></label>
+        <label>Enlace <input id="sUrl" type="url" placeholder="https://www.youtube.com/watch?v=… , https://youtu.be/… o https://open.spotify.com/track/…"></label>
         <button id="detectBtn" class="btn">🔍 Detectar título y artista</button>
         <p id="detectMsg" class="msg"></p>
         <label>Título * <input id="sTitle" type="text"></label>
@@ -131,7 +131,7 @@
       </div>
       <p id="playerMsg" class="msg"></p>
       <p class="small">🎧 Spotify: si solo se escucha una muestra de 30 segundos, inicia sesión con el botón de arriba y luego cambia de pestaña y vuelve al Player para que tome tu sesión. El reproductor es de Spotify: la app no puede iniciar sesión por ti ni ver tu cuenta. La canción completa necesita tu sesión (con Premium suena completa; con cuenta gratis, según los límites de Spotify).</p>
-      <div id="lyricsBox" class="lyrics hidden"><h3>Letra</h3><pre id="lyricsText"></pre></div>
+      <div id="lyricsBox" class="lyrics hidden"><h3>Letra</h3><pre id="lyricsText"></pre><p class="small" id="lyricsNote"></p></div>
     </section>
 
     <section id="tab-sing" class="tabpane card hidden">

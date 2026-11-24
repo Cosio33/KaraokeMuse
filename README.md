@@ -152,6 +152,18 @@ pida. Si el puerto 8080 está ocupado, arranca con `PORT=8081` (en CMD:
   de la sala, se elimina la sala (se crea una nueva con código nuevo) y
   se cambia la contraseña del admin.
 
+### Novedades (ADR-024)
+
+- **Enlaces cortos de YouTube:** los enlaces que comparte la app de
+  YouTube (`https://youtu.be/…`) ya se aceptan igual que los completos.
+  Antes, Detectar los etiquetaba como Spotify y agregarlos fallaba.
+- **Letra en Spotify:** cuando suena una canción de Spotify, el Player
+  muestra su letra (buscada en LRCLIB, gratis y sin clave) debajo del
+  reproductor, sin sincronizar: el embed de Spotify no comparte el
+  tiempo de reproducción. Si no se encuentra la letra, se avisa que la
+  reproducción de Spotify es solo para escuchar y que el karaoke con
+  letra sincronizada es para vídeos locales.
+
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `PORT` | `8080` | Puerto del servidor |

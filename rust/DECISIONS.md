@@ -539,3 +539,44 @@ Consequences: el usuario inicia sesión con su propia cuenta de
 Spotify en su navegador; la app no guarda nada de Spotify. Si el
 navegador bloquea las cookies de terceros, el embed no ve la sesión y
 sigue dando solo la muestra (límite del navegador, no de la app).
+
+## ADR-024: Enlaces cortos youtu.be y letra de Spotify (2026-11-24)
+Status: accepted (2026-11-24)
+Context: (1) Al pegar un enlace de compartir de YouTube
+(`https://youtu.be/…`, el formato que da la app de YouTube) y pulsar
+Detectar, la app lo etiquetaba como Spotify y al agregarlo el servidor
+respondía "url debe ser de Spotify". Causa: `fetch_metadata` en
+`rust/routes/src/metadata.rs` decidía la plataforma con
+`url.contains("youtube")`, y `youtu.be` no contiene esa cadena (el
+oEmbed sí se pedía bien a YouTube y la validación de
+`validate.rs` y `youtubeId` en `app.js` ya aceptaban `youtu.be`;
+solo la etiqueta estaba mal). (2) El reproductor embebido de Spotify
+no muestra la letra de la canción y no se puede modificar: es un
+iframe de otro origen y Spotify no expone la letra en el embed ni el
+tiempo de reproducción, así que no se puede sincronizar la letra con
+la música.
+Decision: (1) Nueva función pura `detect_platform(url)` en
+`metadata.rs` (`youtube` si la URL contiene `youtube` o `youtu.be`,
+`spotify` en otro caso), con tests unitarios para `youtu.be`,
+`watch?v=`, `shorts`, `music.youtube.com` y Spotify con/sin
+`/intl-es/`; test de integración que crea una canción con
+`https://youtu.be/elOen9IhAL4` como YouTube (201) y rechaza esa misma
+URL como Spotify (400). (2) Cuando suena una canción de Spotify sin
+`lyrics_text`, el Player busca la letra en LRCLIB
+(`https://lrclib.net/api/get` y, si no hay artista o no hay
+resultado, `/api/search`), servicio gratuito sin clave y con CORS
+abierto, y la muestra en el cuadro de letra ya existente, con la nota
+"Letra sin sincronizar (fuente: LRCLIB). El reproductor de Spotify no
+comparte el tiempo de reproducción." Si no se encuentra la letra (o
+falla la búsqueda), el cuadro muestra "No se encontró la letra de esta
+canción." y la leyenda "La reproducción de Spotify es solo para
+escuchar la canción; el karaoke con letra sincronizada es para vídeos
+locales." La búsqueda se cachea por canción y solo se pinta si la
+canción que suena sigue siendo la misma. `CACHE_NAME` del service
+worker sube a `karaokemuse-v3` (cambió `public/`).
+Consequences: los enlaces que comparte la app de YouTube funcionan
+igual que los completos, y las canciones de Spotify muestran su letra
+(cuando LRCLIB la tiene) sin sincronizar. Límite honesto: si LRCLIB no
+tiene la letra o está caído, solo se ve la leyenda; y la letra nunca
+va sincronizada con la música en Spotify, porque el embed no dice en
+qué segundo va la canción.
