@@ -9,7 +9,7 @@ main{max-width:900px;margin:0 auto;padding:0 1rem 2rem}
 label{display:block;margin:.5rem 0;font-size:.95rem}
 input,select,textarea{width:100%;padding:.6rem;border-radius:8px;border:1px solid #4a3a70;background:#171226;color:#fff;margin-top:.25rem}
 .check input{width:auto}
-.btn{background:#6c4fd8;color:#fff;border:0;border-radius:10px;padding:.65rem 1.1rem;font-size:1rem;cursor:pointer;margin-top:.5rem}
+.btn{background:#6c4fd8;color:#fff;border:0;border-radius:10px;padding:.65rem 1.1rem;font-size:1rem;cursor:pointer;margin-top:.5rem;text-decoration:none;display:inline-block}
 .btn.primary{background:#e5488f}
 .btn.small{padding:.35rem .7rem;font-size:.9rem}
 .btn:disabled{opacity:.5;cursor:not-allowed}
